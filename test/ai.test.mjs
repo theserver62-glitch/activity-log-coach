@@ -1,0 +1,121 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createAIService, BRIEF_SCHEMA, MODEL_OPTIONS, CLOUD_MODEL } from '../src/ai.js';
+
+// Non-credential fixture values, used only by the SDK stub below.
+const env = Object.fromEntries(['API_KEY', 'AUTH_DOMAIN', 'PROJECT_ID', 'APP_ID', 'MESSAGING_SENDER_ID', 'STORAGE_BUCKET'].map(key => [`VITE_FIREBASE_${key}`, 'test-only']));
+env.VITE_APPCHECK_SITE_KEY = 'test-only';
+const output = JSON.stringify({ today: 'Walk, 20 minutes', avoid: 'Heavy legs after RPE 9 squats', meal: 'Tofu rice bowl', why: 'Low energy' });
+const input = { logs: [], checkIn: { sleep: 5, soreness: 7, energy: 'low', note: '' }, today: '2026-11-24' };
+
+function harness({ status = 'available', online = true, source = 'on_device', config = env } = {}) {
+  const calls = [];
+  const runtime = {
+    navigator: { onLine: online }, self: {},
+    LanguageModel: {
+      availability: async options => { calls.push(['availability', options]); return status; },
+      create: async options => {
+        calls.push(['create', options]);
+        options.monitor?.({ addEventListener: (name, callback) => { assert.equal(name, 'downloadprogress'); callback({ loaded: .5 }); } });
+        return { prompt: async (prompt, options) => { calls.push(['prompt', prompt, options]); return output; }, destroy: () => calls.push(['destroy']) };
+      },
+    },
+  };
+  const sdk = {
+    getApps: () => [],
+    initializeApp: (options, settings) => { const app = { name: settings.name }; calls.push(['app', options, settings]); return app; },
+    initializeAppCheck: (app, options) => { calls.push(['appcheck', options, app]); return {}; },
+    ReCaptchaV3Provider: class {}, GoogleAIBackend: class {},
+    getAI: app => { calls.push(['ai', app]); return {}; },
+    getGenerativeModel: (ai, options) => {
+      calls.push(['model', options]);
+      return { generateContent: async (prompt, options) => { calls.push(['generate', prompt, options]); return { response: { text: () => output, inferenceSource: source } }; } };
+    },
+  };
+  return { service: createAIService({ env: config, runtime, sdk }), calls, runtime };
+}
+
+test('default off uses SDK ONLY_ON_DEVICE and never initializes App Check', async () => {
+  const { service, calls } = harness();
+  assert.equal((await service.generateBrief(input)).inferenceSource, 'on_device');
+  assert.equal(calls.find(c => c[0] === 'model')[1].mode, 'only_on_device');
+  assert.ok(!calls.some(c => c[0] === 'appcheck'));
+});
+test('consent + full config use PREFER_ON_DEVICE, App Check before AI, both schemas and actual source', async () => {
+  const { service, calls } = harness({ status: 'unavailable', source: 'in_cloud' });
+  const brief = await service.generateBrief({ ...input, allowCloud: true });
+  assert.equal(brief.inferenceSource, 'in_cloud');
+  const options = calls.find(c => c[0] === 'model')[1];
+  assert.equal(options.mode, 'prefer_on_device');
+  assert.equal(options.inCloudParams.model, CLOUD_MODEL);
+  assert.deepEqual(options.inCloudParams.generationConfig.responseJsonSchema, BRIEF_SCHEMA);
+  assert.deepEqual(options.onDeviceParams.promptOptions.responseConstraint, BRIEF_SCHEMA);
+  assert.ok(calls.findIndex(c => c[0] === 'appcheck') < calls.findIndex(c => c[0] === 'ai'));
+});
+test('unavailable with consent off never calls Firebase', async () => {
+  const { service, calls } = harness({ status: 'unavailable' });
+  await assert.rejects(service.generateBrief(input), { code: 'device' });
+  assert.deepEqual(calls.map(c => c[0]), ['availability']);
+});
+test('missing config stays ONLY_ON_DEVICE even with saved consent and works via native model', async () => {
+  const { service, calls } = harness({ config: {} });
+  assert.equal(service.cloudConfigured, false);
+  assert.equal(service.inferenceMode(true), 'only_on_device');
+  assert.equal((await service.generateBrief({ ...input, allowCloud: true })).inferenceSource, 'on_device');
+  assert.ok(!calls.some(c => ['app', 'ai', 'model', 'appcheck'].includes(c[0])));
+  assert.deepEqual(calls.find(c => c[0] === 'prompt')[2].responseConstraint, BRIEF_SCHEMA);
+  assert.ok(calls.some(c => c[0] === 'destroy'));
+});
+test('missing App Check key disables fallback but keeps configured SDK local inference', async () => {
+  const { service, calls } = harness({ config: { ...env, VITE_APPCHECK_SITE_KEY: '' } });
+  await service.generateBrief({ ...input, allowCloud: true });
+  assert.equal(calls.find(c => c[0] === 'model')[1].mode, 'only_on_device');
+});
+test('offline forces local inference; absent model explains offline without network', async () => {
+  const local = harness({ online: false });
+  await local.service.generateBrief({ ...input, allowCloud: true });
+  assert.equal(local.calls.find(c => c[0] === 'model')[1].mode, 'only_on_device');
+  const missing = harness({ online: false, status: 'unavailable' });
+  await assert.rejects(missing.service.generateBrief({ ...input, allowCloud: true }), { code: 'offline' });
+  assert.ok(!missing.calls.some(c => c[0] === 'app'));
+});
+test('download starts create synchronously from click and reports progress, then releases session', async () => {
+  const { service, calls } = harness();
+  const progress = [];
+  const pending = service.downloadDeviceModel(value => progress.push(value));
+  assert.equal(calls[0][0], 'create');
+  assert.deepEqual(calls[0][1].expectedInputs, MODEL_OPTIONS.expectedInputs);
+  await pending;
+  assert.deepEqual(progress, [.5, 1]);
+  assert.ok(calls.some(c => c[0] === 'destroy'));
+});
+test('debug token requires DEV and explicit opt-in; never enabled in production', async () => {
+  for (const dev of [true, false]) {
+    const { service, runtime } = harness({ config: { ...env, DEV: dev, VITE_APPCHECK_DEBUG_TOKEN: 'true' } });
+    await service.generateBrief({ ...input, allowCloud: true });
+    assert.equal(runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN, dev ? true : undefined);
+  }
+});
+test('revoking consent changes the next call to ONLY_ON_DEVICE', async () => {
+  const { service, calls } = harness();
+  await service.generateBrief({ ...input, allowCloud: true });
+  await service.generateBrief({ ...input, allowCloud: false });
+  assert.deepEqual(calls.filter(c => c[0] === 'model').map(c => c[1].mode), ['prefer_on_device', 'only_on_device']);
+});
+test('enabling cloud after a local request initializes a fresh App Check-protected AI service', async () => {
+  const { service, calls } = harness();
+  await service.generateBrief({ ...input, allowCloud: false });
+  await service.generateBrief({ ...input, allowCloud: true });
+  const aiCalls = calls.filter(c => c[0] === 'ai');
+  assert.notEqual(aiCalls[0][1].name, aiCalls[1][1].name);
+  const appCheckCall = calls.find(c => c[0] === 'appcheck');
+  assert.equal(appCheckCall[2], aiCalls[1][1]);
+  assert.ok(calls.indexOf(appCheckCall) < calls.indexOf(aiCalls[1]));
+});
+test('aborted request does not start inference and unreported source is rejected', async () => {
+  const { service, calls } = harness();
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(service.generateBrief({ ...input, signal: controller.signal }), { name: 'AbortError' });
+  assert.ok(!calls.some(c => c[0] === 'model'));
+  await assert.rejects(harness({ source: 'unknown' }).service.generateBrief(input), { code: 'source' });
+});
