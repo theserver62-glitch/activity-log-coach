@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSource } from 'firebase/ai';
-import { buildPrompt, parseBrief, recoveryFacts } from './brief.js';
+import { buildPrompt, parseBrief, recoveryFacts, MEAL_LIMIT } from './brief.js';
 
 // Current Firebase hybrid docs and this installed SDK's default cloud model:
 // https://firebase.google.com/docs/ai-logic/hybrid/web/configuration-options
@@ -12,7 +12,7 @@ export const MODEL_OPTIONS = {
 };
 export const BRIEF_SCHEMA = {
   type: 'object', additionalProperties: false,
-  properties: Object.fromEntries(['today', 'avoid', 'meal', 'why'].map(key => [key, { type: 'string', minLength: 1, maxLength: 160 }])),
+  properties: Object.fromEntries(['today', 'avoid', 'meal', 'why'].map(key => [key, { type: 'string', minLength: 1, maxLength: key === 'meal' ? MEAL_LIMIT : 160 }])),
   required: ['today', 'avoid', 'meal', 'why'],
 };
 
@@ -21,6 +21,7 @@ export class CoachError extends Error {
 }
 
 const firebaseSDK = { initializeApp, getApps, initializeAppCheck, ReCaptchaV3Provider, getAI, getGenerativeModel, GoogleAIBackend };
+const warmupScheduled = new WeakSet();
 
 // Injection keeps the consent/network boundary testable without network or credentials.
 export function createAIService({ env = import.meta.env ?? {}, runtime = globalThis, sdk = firebaseSDK } = {}) {
@@ -65,6 +66,23 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
     } catch { return 'unavailable'; }
   }
 
+  function scheduleDeviceWarmup(status) {
+    if (status !== 'available' || warmupScheduled.has(runtime)) return;
+    warmupScheduled.add(runtime);
+    const warm = async () => {
+      try {
+        // Availability may change between page load and the idle callback.
+        if (await getDeviceStatus() !== 'available') return;
+        const session = await runtime.LanguageModel.create(MODEL_OPTIONS);
+        await session.destroy();
+      } catch { /* Best effort only; never block the page or request a download. */ }
+    };
+    try {
+      if (runtime.requestIdleCallback) runtime.requestIdleCallback(warm);
+      else runtime.setTimeout(warm, 1500);
+    } catch { /* Ignore unsupported scheduling APIs too. */ }
+  }
+
   // Called directly from a click. Start create() before any await to retain activation.
   async function downloadDeviceModel(onProgress = () => {}) {
     if (!runtime.LanguageModel?.create) throw new CoachError('device', 'On-device AI is unavailable in this browser.');
@@ -83,7 +101,7 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
     return allowCloud && cloudConfigured && online ? InferenceMode.PREFER_ON_DEVICE : InferenceMode.ONLY_ON_DEVICE;
   }
 
-  async function generateBrief({ logs, checkIn, today, allowCloud = false, signal }) {
+  async function generateBrief({ logs, checkIn, today, allowCloud = false, signal, onDeviceStart = () => {} }) {
     const mode = inferenceMode(allowCloud);
     const useCloud = mode === InferenceMode.PREFER_ON_DEVICE;
     const status = await getDeviceStatus();
@@ -99,6 +117,7 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
     }
     const facts = recoveryFacts(logs, checkIn, today);
     const prompt = buildPrompt(logs, checkIn, today);
+    if (status === 'available') onDeviceStart();
     let response;
     if (!hasFirebaseConfig) {
       // @firebase/ai 3.1.0 validates apiKey/projectId/appId even in ONLY_ON_DEVICE.
@@ -126,10 +145,10 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
     if (source !== InferenceSource.ON_DEVICE && source !== InferenceSource.IN_CLOUD) {
       throw new CoachError('source', 'The AI did not report where this brief was made. Please try again.');
     }
-    return { ...parseBrief(response.text(), facts), inferenceSource: source };
+    return { ...parseBrief(response.text(), facts, today), inferenceSource: source };
   }
 
-  return { cloudConfigured, getDeviceStatus, downloadDeviceModel, inferenceMode, generateBrief };
+  return { cloudConfigured, getDeviceStatus, scheduleDeviceWarmup, downloadDeviceModel, inferenceMode, generateBrief };
 }
 
 export const coachAI = createAIService();

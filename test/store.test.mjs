@@ -25,7 +25,7 @@ test('samples are push three days ago, easy run two days ago and heavy legs yest
   assert.deepEqual(samples.map(log => log.minutes), [45, 30, 50]);
   assert.deepEqual(samples.map(log => log.rpe), [8, 4, 9]);
   assert.equal(recentWorkouts(samples, '2026-11-24').length, 3);
-  assert.deepEqual(recoveryFacts(samples, { sleep: 7, soreness: 3, energy: 'okay' }, '2026-11-24').avoidAreas, [{ area: 'legs', date: '2026-11-23', rpe: 9 }]);
+  assert.deepEqual(recoveryFacts(samples, { sleep: 7, soreness: 3, energy: 'okay' }, '2026-11-24').avoidAreas, [{ area: 'legs', date: '2026-11-23', rpe: 9, title: 'Leg day · squats 5×5 heavy' }]);
 });
 test('relative samples cross year boundaries and do not change the supplied date', () => {
   const today = new Date('2027-01-01T12:00:00');

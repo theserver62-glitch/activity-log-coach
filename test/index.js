@@ -3,3 +3,4 @@ import './brief.test.mjs';
 import './ai.test.mjs';
 import './store.test.mjs';
 import './sdk.test.mjs';
+import './loading.test.mjs';

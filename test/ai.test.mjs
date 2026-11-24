@@ -126,10 +126,100 @@ test('native, SDK local and cloud replies all pass the same recovery guard', asy
     const { service, calls } = harness({ ...options, reply });
     const result = await service.generateBrief({ ...input, allowCloud: true, logs: [{ date: '2026-11-23', bodyArea: 'legs', type: 'strength', rpe: 9, minutes: 50 }], checkIn: { sleep: 7, soreness: 3, energy: 'okay', note: '' } });
     assert.match(result.today, /upper push.*20-40 min, RPE 4-6/);
-    assert.match(result.avoid, /legs.*RPE 9.*2026-11-23/);
+    assert.match(result.avoid, /legs.*RPE 9 yesterday/);
     assert.doesNotMatch(result.why, /exhausted/);
     assert.equal(result.adjusted, true);
     assert.equal(result.inferenceSource, options.source ?? 'on_device');
     assert.match(calls.find(call => ['generate', 'prompt'].includes(call[0]))[1], /Coach rules \(must follow\)/);
   }
+});
+
+test('warm-up creates and destroys exactly one local session in idle time per page', async () => {
+  const { service, calls, runtime } = harness();
+  const idle = [];
+  runtime.requestIdleCallback = callback => idle.push(callback);
+  const status = await service.getDeviceStatus();
+  service.scheduleDeviceWarmup(status);
+  service.scheduleDeviceWarmup(status);
+  createAIService({ env: {}, runtime }).scheduleDeviceWarmup(status);
+  assert.equal(idle.length, 1);
+  assert.deepEqual(calls.map(call => call[0]), ['availability']);
+  await idle[0]();
+  assert.deepEqual(calls.map(call => call[0]), ['availability', 'availability', 'create', 'destroy']);
+  assert.deepEqual(calls.find(call => call[0] === 'create')[1], MODEL_OPTIONS);
+  service.scheduleDeviceWarmup('available');
+  assert.equal(idle.length, 1);
+});
+
+test('warm-up falls back to a 1500 ms timeout without requestIdleCallback', async () => {
+  const { service, calls, runtime } = harness({ config: {} });
+  const pending = [];
+  runtime.setTimeout = (callback, ms) => pending.push({ callback, ms });
+  service.scheduleDeviceWarmup(await service.getDeviceStatus());
+  assert.equal(pending[0].ms, 1500);
+  assert.ok(!calls.some(call => call[0] === 'create'));
+  await pending[0].callback();
+  assert.deepEqual(calls.slice(-2).map(call => call[0]), ['create', 'destroy']);
+});
+
+test('warm-up never schedules or creates for downloadable, downloading or unavailable models', async () => {
+  for (const status of ['downloadable', 'downloading', 'unavailable']) {
+    const { service, runtime, calls } = harness({ status });
+    runtime.requestIdleCallback = () => assert.fail('Must not schedule a download');
+    runtime.setTimeout = () => assert.fail('Must not schedule a download');
+    service.scheduleDeviceWarmup(await service.getDeviceStatus());
+    assert.deepEqual(calls.map(call => call[0]), ['availability']);
+  }
+});
+
+test('warm-up rechecks availability at idle time without starting a download', async () => {
+  for (const status of ['downloadable', 'downloading', 'unavailable']) {
+    const { service, runtime, calls } = harness();
+    let idle;
+    runtime.requestIdleCallback = callback => { idle = callback; };
+    service.scheduleDeviceWarmup(await service.getDeviceStatus());
+    runtime.LanguageModel.availability = async () => status;
+    await idle();
+    assert.ok(!calls.some(call => call[0] === 'create'));
+  }
+});
+
+test('warm-up ignores availability, create, destroy and scheduling errors', async () => {
+  for (const step of ['availability', 'create', 'destroy', 'schedule']) {
+    const { service, runtime } = harness();
+    let idle;
+    runtime.requestIdleCallback = callback => { if (step === 'schedule') throw new Error('scheduler'); idle = callback; };
+    if (step === 'availability') runtime.LanguageModel.availability = async () => { throw new Error('availability'); };
+    if (step === 'create') runtime.LanguageModel.create = async () => { throw new Error('create'); };
+    if (step === 'destroy') runtime.LanguageModel.create = async () => ({ destroy: () => { throw new Error('destroy'); } });
+    assert.doesNotThrow(() => service.scheduleDeviceWarmup('available'));
+    if (idle) await assert.doesNotReject(idle());
+  }
+});
+
+test('generation announces local start before native or SDK work, never for cloud-only work', async () => {
+  for (const options of [{ config: {} }, {}, { status: 'unavailable', source: 'in_cloud' }, { status: 'downloadable', source: 'in_cloud' }]) {
+    const { service, calls } = harness(options);
+    await service.generateBrief({ ...input, allowCloud: true, onDeviceStart: () => calls.push(['local-start']) });
+    const start = calls.findIndex(call => call[0] === 'local-start');
+    if (options.source === 'in_cloud') assert.equal(start, -1);
+    else assert.ok(start >= 0 && start < calls.findIndex(call => ['create', 'model'].includes(call[0])));
+  }
+  const { service } = harness();
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(service.generateBrief({ ...input, signal: controller.signal, onDeviceStart: () => assert.fail('Aborted') }), { name: 'AbortError' });
+});
+
+test('native, SDK and cloud preserve valid Today variety, tidy Meal, and human dates', async () => {
+  const todayLine = '30 min easy upper-body push: push-ups and light dumbbell press, RPE 5.';
+  const reply = JSON.stringify({ today: todayLine, avoid: 'bad', why: 'bad', meal: 'How about a yummy lentil soup sounds great!' });
+  for (const options of [{ config: {} }, {}, { status: 'unavailable', source: 'in_cloud' }]) {
+    const { service } = harness({ ...options, reply });
+    const result = await service.generateBrief({ ...input, allowCloud: true, logs: [{ date: '2026-11-23', bodyArea: 'legs', title: 'squats', rpe: 9 }], checkIn: { sleep: 7, soreness: 3, energy: 'okay', note: '' } });
+    assert.equal(result.today, todayLine);
+    assert.equal(result.meal, 'Lentil soup.');
+    assert.equal(result.avoid, 'Skip hard legs — squats at RPE 9 yesterday.');
+  }
+  assert.equal(BRIEF_SCHEMA.properties.meal.maxLength, 99);
 });

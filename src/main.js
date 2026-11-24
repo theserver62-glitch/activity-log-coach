@@ -1,6 +1,7 @@
 import './styles.css';
 import { coachAI, friendlyError } from './ai.js';
-import { localDate, recentWorkouts } from './brief.js';
+import { localDate, recentWorkouts, humanDate, humanizeDates } from './brief.js';
+import { delayedDeviceMessage } from './loading.js';
 import { loadState, saveState, validWorkout, validCheckIn } from './store.js';
 
 const $ = selector => document.querySelector(selector);
@@ -11,7 +12,6 @@ let activeRequest;
 let requestNumber = 0;
 let displayedSource;
 const titleCase = text => text.charAt(0).toUpperCase() + text.slice(1);
-const dateLabel = date => new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00`));
 
 // Never interpolate user or model content as HTML.
 function element(tag, text, className) {
@@ -52,15 +52,15 @@ function renderLogs() {
     const date = new Date(`${log.date}T12:00:00`);
     day.append(element('span', new Intl.DateTimeFormat('en', { weekday: 'short' }).format(date), 'secondary'), element('strong', String(date.getDate())));
     const content = element('div', undefined, 'workout-content');
-    content.append(element('h3', log.title || `${titleCase(log.type)} · ${log.bodyArea}`));
+    content.append(element('h3', humanizeDates(log.title) || `${titleCase(log.type)} · ${log.bodyArea}`));
     const meta = `${log.minutes} min · RPE ${log.rpe} · ${log.bodyArea}`;
     content.append(element('p', meta, 'secondary'));
-    const time = element('time', `${dateLabel(log.date)}${log.sample ? ' · Sample data' : ''}`, 'secondary workout-date');
+    const time = element('time', `${humanDate(log.date)}${log.sample ? ' · Sample data' : ''}`, 'secondary workout-date');
     time.dateTime = log.date;
     content.append(time);
     const remove = element('button', '×', 'delete-button');
     remove.type = 'button';
-    remove.setAttribute('aria-label', `Delete ${log.title || log.type} on ${dateLabel(log.date)}`);
+    remove.setAttribute('aria-label', `Delete ${humanizeDates(log.title) || log.type} (${humanDate(log.date)})`);
     remove.addEventListener('click', () => {
       const index = sorted.indexOf(log);
       state.logs = state.logs.filter(entry => entry.id !== log.id);
@@ -108,6 +108,7 @@ function renderNetwork() {
 
 async function refreshDevice() {
   deviceStatus = await coachAI.getDeviceStatus();
+  coachAI.scheduleDeviceWarmup(deviceStatus);
   $('#device-status').textContent = `On-device model: ${deviceStatus}`;
   $('#download-area').hidden = downloading || !['downloadable', 'downloading'].includes(deviceStatus);
   $('#download-model').textContent = deviceStatus === 'downloading' ? 'Show model download progress' : 'Download on-device model';
@@ -137,7 +138,8 @@ function renderLoading() {
   renderSource();
   $('#brief-result').setAttribute('aria-busy', 'true');
   const loading = element('div', undefined, 'brief-loading');
-  loading.append(element('p', 'Putting your day in perspective…', 'secondary'));
+  const message = element('p', 'Putting your day in perspective…', 'secondary');
+  loading.append(message);
   for (const name of ['Today', 'Avoid', 'Meal']) {
     const row = element('div', undefined, 'skeleton-row');
     row.setAttribute('aria-hidden', 'true');
@@ -145,6 +147,7 @@ function renderLoading() {
     loading.append(row);
   }
   $('#brief-result').replaceChildren(loading);
+  return message;
 }
 
 function renderBrief(brief, elapsedMs) {
@@ -196,15 +199,25 @@ $('#check-in-form').addEventListener('submit', async event => {
   activeRequest = new AbortController();
   $('#get-brief').disabled = true;
   $('#get-brief span').textContent = 'Creating your brief…';
-  renderLoading();
+  const loadingMessage = renderLoading();
+  const signal = activeRequest.signal;
+  let stopLoadingMessage;
   try {
     const startedAt = performance.now();
-    const brief = await coachAI.generateBrief({ logs: [...state.logs], checkIn: { ...state.checkIn }, today: localDate(), allowCloud: state.allowCloud, signal: activeRequest.signal });
+    const brief = await coachAI.generateBrief({
+      logs: [...state.logs], checkIn: { ...state.checkIn }, today: localDate(), allowCloud: state.allowCloud, signal,
+      onDeviceStart: () => {
+        stopLoadingMessage = delayedDeviceMessage(text => {
+          if (id === requestNumber) loadingMessage.textContent = text;
+        }, { signal });
+      },
+    });
     const elapsedMs = performance.now() - startedAt;
     if (id === requestNumber) renderBrief(brief, elapsedMs);
   } catch (error) {
     if (id === requestNumber) renderError(error);
   } finally {
+    stopLoadingMessage?.();
     if (id === requestNumber) {
       // Release any SDK-created Chrome session through its creation signal.
       activeRequest?.abort();
@@ -269,6 +282,7 @@ for (const name of ['online', 'offline']) window.addEventListener(name, () => {
 });
 window.addEventListener('focus', () => {
   $('#workout-date').max = localDate();
+  renderLogs();
   void refreshDevice();
 });
 
