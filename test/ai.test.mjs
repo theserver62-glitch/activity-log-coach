@@ -25,7 +25,7 @@ function harness({ status = 'available', online = true, source = 'on_device', co
     getApps: () => [],
     initializeApp: (options, settings) => { const app = { name: settings.name }; calls.push(['app', options, settings]); return app; },
     initializeAppCheck: (app, options) => { calls.push(['appcheck', options, app]); return {}; },
-    ReCaptchaV3Provider: class {}, GoogleAIBackend: class {},
+    ReCaptchaEnterpriseProvider: class {}, GoogleAIBackend: class {},
     getAI: app => { calls.push(['ai', app]); return {}; },
     getGenerativeModel: (ai, options) => {
       calls.push(['model', options]);

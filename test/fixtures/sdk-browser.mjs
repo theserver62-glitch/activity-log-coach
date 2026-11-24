@@ -38,7 +38,7 @@ const service = createAIService({ env, sdk: {
   getAI: browserAI.getAI, getGenerativeModel: browserAI.getGenerativeModel,
   GoogleAIBackend: browserAI.GoogleAIBackend,
   // The real reCAPTCHA provider needs a real page and project; tested separately by stubs.
-  initializeAppCheck: () => ({}), ReCaptchaV3Provider: class {},
+  initializeAppCheck: () => ({}), ReCaptchaEnterpriseProvider: class {},
 } });
 const request = { logs: [], checkIn: { sleep: 5, soreness: 7, energy: 'low', note: '' }, today: '2026-11-24' };
 assert.equal((await service.generateBrief(request)).inferenceSource, 'on_device');

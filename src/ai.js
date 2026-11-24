@@ -1,5 +1,5 @@
 import { initializeApp, getApps } from 'firebase/app';
-import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSource } from 'firebase/ai';
 import { buildPrompt, parseBrief, recoveryFacts, MEAL_LIMIT } from './brief.js';
 
@@ -20,7 +20,7 @@ export class CoachError extends Error {
   constructor(code, message) { super(message); this.name = 'CoachError'; this.code = code; }
 }
 
-const firebaseSDK = { initializeApp, getApps, initializeAppCheck, ReCaptchaV3Provider, getAI, getGenerativeModel, GoogleAIBackend };
+const firebaseSDK = { initializeApp, getApps, initializeAppCheck, ReCaptchaEnterpriseProvider, getAI, getGenerativeModel, GoogleAIBackend };
 const warmupScheduled = new WeakSet();
 
 // Injection keeps the consent/network boundary testable without network or credentials.
@@ -51,7 +51,7 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
         runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
       }
       appCheck = sdk.initializeAppCheck(app, {
-        provider: new sdk.ReCaptchaV3Provider(env.VITE_APPCHECK_SITE_KEY.trim()),
+        provider: new sdk.ReCaptchaEnterpriseProvider(env.VITE_APPCHECK_SITE_KEY.trim()),
         // Fetch tokens on demand; don't keep refreshing after consent is revoked.
         isTokenAutoRefreshEnabled: false,
       });
