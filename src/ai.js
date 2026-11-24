@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import { getAI, getGenerativeModel, GoogleAIBackend, InferenceMode, InferenceSource } from 'firebase/ai';
-import { buildPrompt, parseBrief } from './brief.js';
+import { buildPrompt, parseBrief, recoveryFacts } from './brief.js';
 
 // Current Firebase hybrid docs and this installed SDK's default cloud model:
 // https://firebase.google.com/docs/ai-logic/hybrid/web/configuration-options
@@ -97,6 +97,7 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
       }
       throw new CoachError('device', 'On-device AI is unavailable in this browser. You can allow cloud AI to get your brief.');
     }
+    const facts = recoveryFacts(logs, checkIn, today);
     const prompt = buildPrompt(logs, checkIn, today);
     let response;
     if (!hasFirebaseConfig) {
@@ -125,7 +126,7 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
     if (source !== InferenceSource.ON_DEVICE && source !== InferenceSource.IN_CLOUD) {
       throw new CoachError('source', 'The AI did not report where this brief was made. Please try again.');
     }
-    return { ...parseBrief(response.text()), inferenceSource: source };
+    return { ...parseBrief(response.text(), facts), inferenceSource: source };
   }
 
   return { cloudConfigured, getDeviceStatus, downloadDeviceModel, inferenceMode, generateBrief };

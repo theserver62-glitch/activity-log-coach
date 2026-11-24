@@ -8,7 +8,7 @@ env.VITE_APPCHECK_SITE_KEY = 'test-only';
 const output = JSON.stringify({ today: 'Walk, 20 minutes', avoid: 'Heavy legs after RPE 9 squats', meal: 'Tofu rice bowl', why: 'Low energy' });
 const input = { logs: [], checkIn: { sleep: 5, soreness: 7, energy: 'low', note: '' }, today: '2026-11-24' };
 
-function harness({ status = 'available', online = true, source = 'on_device', config = env } = {}) {
+function harness({ status = 'available', online = true, source = 'on_device', config = env, reply = output } = {}) {
   const calls = [];
   const runtime = {
     navigator: { onLine: online }, self: {},
@@ -17,7 +17,7 @@ function harness({ status = 'available', online = true, source = 'on_device', co
       create: async options => {
         calls.push(['create', options]);
         options.monitor?.({ addEventListener: (name, callback) => { assert.equal(name, 'downloadprogress'); callback({ loaded: .5 }); } });
-        return { prompt: async (prompt, options) => { calls.push(['prompt', prompt, options]); return output; }, destroy: () => calls.push(['destroy']) };
+        return { prompt: async (prompt, options) => { calls.push(['prompt', prompt, options]); return reply; }, destroy: () => calls.push(['destroy']) };
       },
     },
   };
@@ -29,7 +29,7 @@ function harness({ status = 'available', online = true, source = 'on_device', co
     getAI: app => { calls.push(['ai', app]); return {}; },
     getGenerativeModel: (ai, options) => {
       calls.push(['model', options]);
-      return { generateContent: async (prompt, options) => { calls.push(['generate', prompt, options]); return { response: { text: () => output, inferenceSource: source } }; } };
+      return { generateContent: async (prompt, options) => { calls.push(['generate', prompt, options]); return { response: { text: () => reply, inferenceSource: source } }; } };
     },
   };
   return { service: createAIService({ env: config, runtime, sdk }), calls, runtime };
@@ -118,4 +118,18 @@ test('aborted request does not start inference and unreported source is rejected
   await assert.rejects(service.generateBrief({ ...input, signal: controller.signal }), { name: 'AbortError' });
   assert.ok(!calls.some(c => c[0] === 'model'));
   await assert.rejects(harness({ source: 'unknown' }).service.generateBrief(input), { code: 'source' });
+});
+
+test('native, SDK local and cloud replies all pass the same recovery guard', async () => {
+  const reply = JSON.stringify({ today: 'Rest, 0 minutes', avoid: 'Avoid upper push from Nov 18.', why: 'You are exhausted.', meal: 'Tofu rice bowl' });
+  for (const options of [{ config: {} }, {}, { status: 'unavailable', source: 'in_cloud' }]) {
+    const { service, calls } = harness({ ...options, reply });
+    const result = await service.generateBrief({ ...input, allowCloud: true, logs: [{ date: '2026-11-23', bodyArea: 'legs', type: 'strength', rpe: 9, minutes: 50 }], checkIn: { sleep: 7, soreness: 3, energy: 'okay', note: '' } });
+    assert.match(result.today, /upper push.*20-40 min, RPE 4-6/);
+    assert.match(result.avoid, /legs.*RPE 9.*2026-11-23/);
+    assert.doesNotMatch(result.why, /exhausted/);
+    assert.equal(result.adjusted, true);
+    assert.equal(result.inferenceSource, options.source ?? 'on_device');
+    assert.match(calls.find(call => ['generate', 'prompt'].includes(call[0]))[1], /Coach rules \(must follow\)/);
+  }
 });

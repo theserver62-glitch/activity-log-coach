@@ -21,8 +21,8 @@
 
       <div class="intro">
         <p class="eyebrow" id="today-date"></p>
-        <h1>Meet yourself where you are.</h1>
-        <p>Your recent workouts + how you feel today.<br class="mobile-break" /> One thoughtful next step.</p>
+        <h1>Your workout plan for today.</h1>
+        <p>Add your workouts and how you feel. Get a plan for training, recovery, and food.</p>
       </div>
       <p id="storage-notice" class="notice secondary" role="status" hidden></p>
       <p id="network-status" class="notice" role="status" hidden></p>
@@ -50,32 +50,33 @@
           <div class="history-note"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3" stroke="currentColor" stroke-width="1.75"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg><p class="secondary">Your logs stay in this browser.<br />No account. No analytics.</p></div>
         </section>
 
-        <div class="today-column">
           <section id="check-in" aria-labelledby="check-in-title" tabindex="-1">
             <div class="section-heading"><span class="section-number" aria-hidden="true">02</span><h2 id="check-in-title">Today's check-in</h2></div>
             <p class="section-description">How are you arriving today?</p>
             <form id="check-in-form">
               <div class="check-in-grid">
                 <label>Sleep <span class="secondary">hours</span><input id="sleep" name="sleep" type="number" min="0" max="24" step="0.5" required inputmode="decimal" /></label>
-                <label class="soreness-label" for="soreness">Soreness <output id="soreness-value" for="soreness">3 / 10</output><input id="soreness" name="soreness" type="range" min="0" max="10" step="1" /><span class="range-ends secondary"><span>None</span><span>Very sore</span></span></label>
+                <label class="soreness-label" for="soreness"><span class="soreness-heading">Soreness <output id="soreness-value" for="soreness">3 / 10</output></span><input id="soreness" name="soreness" type="range" min="0" max="10" step="1" /><span class="range-ends secondary"><span>None</span><span>Very sore</span></span></label>
               </div>
               <fieldset class="energy-field"><legend>Energy</legend><div class="energy-options"><label><input type="radio" name="energy" value="low" /><span>Low</span></label><label><input type="radio" name="energy" value="okay" /><span>Okay</span></label><label><input type="radio" name="energy" value="high" /><span>High</span></label></div></fieldset>
               <label class="note-label" for="note"><span>Anything else? <span class="secondary">Optional</span></span><textarea id="note" name="note" rows="2" maxlength="140" placeholder="A stiff shoulder, a long day…" aria-describedby="note-count"></textarea></label>
               <p class="secondary note-count" id="note-count">0 / 140</p>
 
+              <button class="primary-button" id="get-brief" type="submit"><span>Get today's brief</span><span aria-hidden="true">↗</span></button>
               <div class="privacy-settings">
-                <label class="toggle-label"><input type="checkbox" id="allow-cloud" /><span class="toggle-track" aria-hidden="true"></span><span>Allow cloud when on-device AI is unavailable</span></label>
+                <label class="toggle-label"><input type="checkbox" id="allow-cloud" aria-label="Allow cloud when on-device AI is unavailable" aria-describedby="privacy-explanation config-notice" /><span class="toggle-track" aria-hidden="true"></span><span>Cloud fallback</span><span class="secondary cloud-status" id="cloud-status">Off</span></label>
                 <p class="secondary" id="privacy-explanation">Off by default. Your workouts and check-in stay on this device.</p>
                 <p class="secondary config-notice" id="config-notice" hidden>Cloud fallback not configured</p>
               </div>
-              <button class="primary-button" id="get-brief" type="submit"><span>Get today's brief</span><span aria-hidden="true">↗</span></button>
-              <p class="secondary button-caption">Made for your energy, not your streak.</p>
             </form>
           </section>
 
+        <div class="result-column">
           <section class="brief-section" aria-labelledby="brief-title">
-            <div class="brief-heading"><h2 id="brief-title">Your daily brief</h2><span class="badge" id="source-badge" hidden></span></div>
-            <div id="brief-result" aria-live="polite" aria-atomic="true"><div class="brief-placeholder"><p>A plan that listens.</p><p class="secondary">Check in above for a workout, what to avoid, and something good to eat.</p><div class="brief-preview" aria-hidden="true"><span>Today</span><span>Avoid</span><span>Meal</span></div></div></div>
+            <div class="brief-heading"><h2 id="brief-title">Today's brief</h2><span class="source-badge" id="source-badge" role="status">◌ Checking on-device model</span></div>
+            <p class="secondary source-help" id="source-help" hidden></p>
+            <div id="brief-result" aria-live="polite" aria-atomic="true"><div class="brief-placeholder"><p>Your next step starts here</p><p class="secondary">Check in for a plan for training, recovery, and food.</p></div></div>
+            <p class="secondary generation-meta" id="generation-meta" hidden></p>
             <p class="secondary disclaimer">Not medical advice. Listen to your body.</p>
           </section>
 

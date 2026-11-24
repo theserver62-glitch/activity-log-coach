@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPrompt, parseBrief, recentWorkouts, isDate } from '../src/brief.js';
+import { AREAS, buildPrompt, checkBrief, parseBrief, recentWorkouts, recoveryFacts, isDate } from '../src/brief.js';
 
 const logs = [
   { date: '2026-11-23', type: 'strength', bodyArea: 'legs', title: 'Squats 5x5 heavy', minutes: 50, rpe: 9 },
@@ -8,6 +8,123 @@ const logs = [
 ];
 const checkIn = { sleep: 5, soreness: 7, energy: 'low', note: 'Stiff legs' };
 const brief = { today: 'Walk for 20 minutes.', avoid: 'Heavy legs: Nov 23 squats were RPE 9.', meal: 'Rice, tofu and vegetables.', why: 'Poor sleep and sore legs call for an easy day.' };
+const today = '2026-11-24';
+const rested = { sleep: 8, soreness: 2, energy: 'high', note: '' };
+const moderate = { sleep: 7, soreness: 3, energy: 'okay', note: '' };
+const session = (bodyArea, date = '2026-11-23', rpe = 9) => ({ date, bodyArea, rpe, type: 'strength', minutes: 30 });
+
+const recoveryScenarios = [
+  { name: 'fresh athlete', logs: [session('legs', '2026-11-21')], checkIn: rested, readiness: 'high', avoid: [], fresh: AREAS },
+  { name: 'leg day yesterday', logs: [session('legs')], checkIn: moderate, readiness: 'moderate', avoid: [{ area: 'legs', date: '2026-11-23', rpe: 9 }], fresh: AREAS.filter(area => area !== 'legs') },
+  { name: 'sore 8/10', logs: [], checkIn: { ...rested, soreness: 8 }, readiness: 'low', avoid: [], fresh: AREAS },
+  { name: 'slept 4 hours', logs: [], checkIn: { ...rested, sleep: 4 }, readiness: 'low', avoid: [], fresh: AREAS },
+  { name: 'easy run only', logs: [{ ...session('cardio', today, 4), type: 'run' }], checkIn: rested, readiness: 'high', avoid: [], fresh: AREAS.filter(area => area !== 'cardio') },
+  { name: 'two areas flagged', logs: [session('upper push', today, 8), session('legs')], checkIn: rested, readiness: 'moderate', avoid: [{ area: 'legs', date: '2026-11-23', rpe: 9 }, { area: 'upper push', date: today, rpe: 8 }], fresh: AREAS.filter(area => !['legs', 'upper push'].includes(area)) },
+  { name: 'no logs', logs: [], checkIn: moderate, readiness: 'moderate', avoid: [], fresh: AREAS },
+  { name: 'old logs over 7 days', logs: [session('legs', '2026-11-10')], checkIn: rested, readiness: 'high', avoid: [], fresh: AREAS },
+  { name: 'low energy overrides good sleep', logs: [], checkIn: { ...rested, energy: 'low' }, readiness: 'low', avoid: [], fresh: AREAS },
+];
+for (const scenario of recoveryScenarios) {
+  test(`recovery facts: ${scenario.name}`, () => {
+    assert.deepEqual(recoveryFacts(scenario.logs, scenario.checkIn, today), {
+      avoidAreas: scenario.avoid, readiness: scenario.readiness, freshAreas: scenario.fresh,
+      suggestedIntensity: { low: 'rest or easy 15-20 min (walk, mobility)', moderate: 'easy to moderate 20-40 min, RPE 4-6', high: 'normal training, RPE 6-8' }[scenario.readiness],
+    });
+  });
+}
+
+test('recovery window includes today and yesterday, excludes two days ago, future and invalid dates', () => {
+  const facts = recoveryFacts([session('legs', '2026-11-22'), session('core', '2026-11-25'), session('upper pull', 'bad-date'), session('cardio', today, 8)], rested, today);
+  assert.deepEqual(facts.avoidAreas, [{ area: 'cardio', date: today, rpe: 8 }]);
+  assert.deepEqual(facts.freshAreas, AREAS.filter(area => area !== 'cardio'));
+  assert.throws(() => recoveryFacts([], rested, '2026-02-30'), /valid date/);
+});
+
+test('recovery window handles month, year and leap-day boundaries', () => {
+  for (const [date, yesterday] of [['2027-01-01', '2026-12-31'], ['2028-03-01', '2028-02-29'], ['2026-03-01', '2026-02-28']]) {
+    assert.deepEqual(recoveryFacts([session('legs', yesterday)], rested, date).avoidAreas, [{ area: 'legs', date: yesterday, rpe: 9 }]);
+  }
+});
+
+test('readiness and RPE thresholds are inclusive as specified', () => {
+  assert.equal(recoveryFacts([], { ...rested, sleep: 6 }, today).readiness, 'moderate');
+  assert.equal(recoveryFacts([], { ...rested, sleep: 5.5 }, today).readiness, 'low');
+  assert.equal(recoveryFacts([], { ...rested, soreness: 7 }, today).readiness, 'low');
+  assert.equal(recoveryFacts([], { ...rested, sleep: 7, soreness: 3 }, today).readiness, 'high');
+  assert.equal(recoveryFacts([], { ...rested, soreness: 4 }, today).readiness, 'moderate');
+  for (const rpe of [4, 5, 7, 8, 10]) assert.equal(recoveryFacts([session('cardio', today, rpe)], rested, today).avoidAreas.length, rpe >= 8 ? 1 : 0);
+});
+
+test('facts deduplicate areas deterministically without mutating input', () => {
+  const workouts = Object.freeze([session('legs'), session('legs', today, 8), session('legs', today, 10), session('core', today, 4)].map(Object.freeze));
+  const before = JSON.stringify(workouts);
+  const facts = recoveryFacts(workouts, Object.freeze({ ...rested }), today);
+  assert.deepEqual(facts.avoidAreas, [{ area: 'legs', date: today, rpe: 10 }]);
+  assert.deepEqual(facts, recoveryFacts([...workouts].reverse(), rested, today));
+  assert.equal(JSON.stringify(workouts), before);
+});
+
+test('checkBrief replaces contradictory Avoid, excessive rest and a fabricated Why', () => {
+  const facts = recoveryFacts([session('legs')], moderate, today);
+  const input = Object.freeze({ ...brief, today: 'Rest, 0 minutes.', avoid: 'Avoid upper push from Nov 18 as soreness lingers.', why: 'Your legs are fully recovered; go heavy.' });
+  const checked = checkBrief(input, facts);
+  assert.equal(checked.adjusted, true);
+  assert.match(checked.avoid, /legs.*RPE 9.*2026-11-23/);
+  assert.doesNotMatch(checked.avoid, /upper push|Nov 18/);
+  assert.match(checked.today, /upper push.*20-40 min, RPE 4-6/);
+  assert.doesNotMatch(checked.today, /Rest/);
+  assert.doesNotMatch(checked.why, /fully recovered|go heavy/);
+  assert.equal(checked.meal, brief.meal);
+  assert.equal(input.adjusted, undefined);
+});
+
+test('mentioning a flagged word cannot bypass contradictory advice checks', () => {
+  const facts = recoveryFacts([session('legs'), session('upper push', today, 8)], moderate, today);
+  const checked = checkBrief({ ...brief, avoid: 'Legs are fine. Avoid upper push only.', today: 'Heavy squats at RPE 10 for 60 min.' }, facts);
+  for (const word of ['legs', 'upper push']) assert.ok(checked.avoid.includes(word));
+  assert.match(checked.today, /upper pull.*20-40 min, RPE 4-6/);
+  assert.equal(checked.adjusted, true);
+});
+
+test('no flagged areas means intensity-only Avoid and facts-consistent Today', () => {
+  for (const check of [rested, moderate, checkIn]) {
+    const facts = recoveryFacts([], check, today);
+    const checked = parseBrief(JSON.stringify(brief), facts);
+    assert.ok(AREAS.every(area => !checked.avoid.includes(area)));
+    assert.match(checked.today, facts.readiness === 'low' ? /15-20 min/ : facts.readiness === 'high' ? /RPE 6-8/ : /20-40 min, RPE 4-6/);
+  }
+});
+
+test('approved phrasing is preserved and checking is idempotent', () => {
+  const facts = recoveryFacts([session('legs')], moderate, today);
+  const prompt = buildPrompt([session('legs')], moderate, today);
+  const options = JSON.parse(prompt.match(/Approved wording: (.+)/)[1]);
+  const input = { today: options.today[1], avoid: options.avoid[1], why: options.why[1], meal: brief.meal };
+  assert.deepEqual(checkBrief(input, facts), input);
+  const corrected = checkBrief(brief, facts);
+  assert.deepEqual(checkBrief(corrected, facts), corrected);
+});
+
+test('all six flagged areas survive the field limit and do not produce a conflicting fresh workout', () => {
+  const facts = recoveryFacts(AREAS.map((area, i) => session(area, i % 2 ? today : '2026-11-23', i % 2 ? 8 : 10)), moderate, today);
+  const checked = checkBrief(brief, facts);
+  for (const area of AREAS) assert.ok(checked.avoid.includes(area));
+  for (const key of ['today', 'avoid', 'why', 'meal']) assert.ok(checked[key].length <= 160);
+  assert.match(checked.today, /mobility.*20-40 min, RPE 4-6/);
+});
+
+test('a flagged full body session never leads to a suggested fresh strength area', () => {
+  const checked = checkBrief(brief, recoveryFacts([session('full body')], moderate, today));
+  assert.match(checked.today, /cardio.*RPE 4-6/);
+});
+
+test('coach facts and approved wording appear above all untrusted data blocks', () => {
+  const prompt = buildPrompt(logs, moderate, today);
+  assert.ok(prompt.indexOf('Coach rules (must follow)') < prompt.indexOf('<workout_data>'));
+  assert.ok(prompt.indexOf('Approved wording:') < prompt.indexOf('<user_note>'));
+  assert.ok(prompt.includes(JSON.stringify(recoveryFacts(logs, moderate, today))));
+  assert.match(prompt, /If avoidAreas is empty, Avoid concerns intensity only/);
+});
 
 test('prompt includes recent logs, RPE, minutes, check-in and four JSON fields', () => {
   const prompt = buildPrompt(logs, checkIn, '2026-11-24');

@@ -9,6 +9,7 @@ let deviceStatus = 'checking';
 let downloading = false;
 let activeRequest;
 let requestNumber = 0;
+let displayedSource;
 const titleCase = text => text.charAt(0).toUpperCase() + text.slice(1);
 const dateLabel = date => new Intl.DateTimeFormat('en', { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00`));
 
@@ -34,8 +35,11 @@ function resetBrief(message = 'Your context changed. Get a new brief when you’
   $('#get-brief').disabled = false;
   $('#get-brief span').textContent = "Get today's brief";
   $('#brief-result').removeAttribute('aria-busy');
-  $('#source-badge').hidden = true;
-  $('#brief-result').replaceChildren(element('p', message, 'brief-message'));
+  displayedSource = undefined;
+  renderSource();
+  const placeholder = element('div', undefined, 'brief-placeholder');
+  placeholder.append(element('p', 'Your next step starts here'), element('p', message, 'secondary'));
+  $('#brief-result').replaceChildren(placeholder);
 }
 
 function renderLogs() {
@@ -75,9 +79,24 @@ function renderLogs() {
 function renderPrivacy() {
   $('#allow-cloud').checked = state.allowCloud;
   $('#config-notice').hidden = coachAI.cloudConfigured;
-  $('#privacy-explanation').textContent = state.allowCloud
+  $('#cloud-status').textContent = state.allowCloud ? (coachAI.cloudConfigured ? 'On' : 'Unavailable') : 'Off';
+  $('#privacy-explanation').textContent = state.allowCloud && coachAI.cloudConfigured
     ? 'If local AI is unavailable, your last 7 days of workouts and today’s check-in may be sent to Google Gemini.'
     : 'Cloud is off. Your workouts and check-in stay on this device.';
+}
+
+function renderSource() {
+  const local = displayedSource === 'on_device';
+  $('#source-badge').textContent = displayedSource
+    ? local ? '✓ On this device' : '☁ Generated in the cloud (Gemini)'
+    : activeRequest ? '◌ Creating your brief'
+      : deviceStatus === 'available' ? '✓ Ready on this device' : `◌ On-device model: ${deviceStatus}`;
+  $('#source-help').textContent = local ? 'Your data stayed on this device.' : '';
+  $('#source-help').hidden = !local;
+  if (!displayedSource) {
+    $('#generation-meta').textContent = '';
+    $('#generation-meta').hidden = true;
+  }
 }
 
 function renderNetwork() {
@@ -97,6 +116,7 @@ async function refreshDevice() {
     ? 'Use a supported Chrome desktop browser for Gemini Nano, or allow cloud AI.'
     : deviceStatus === 'available' ? 'Ready here. Your brief can work without a connection.' : '';
   renderNetwork();
+  renderSource();
 }
 
 function readCheckIn() {
@@ -113,7 +133,8 @@ function updateCheckIn() {
 }
 
 function renderLoading() {
-  $('#source-badge').hidden = true;
+  displayedSource = undefined;
+  renderSource();
   $('#brief-result').setAttribute('aria-busy', 'true');
   const loading = element('div', undefined, 'brief-loading');
   loading.append(element('p', 'Putting your day in perspective…', 'secondary'));
@@ -126,7 +147,7 @@ function renderLoading() {
   $('#brief-result').replaceChildren(loading);
 }
 
-function renderBrief(brief) {
+function renderBrief(brief, elapsedMs) {
   const body = element('div', undefined, 'brief-content');
   const rows = element('dl', undefined, 'brief-rows');
   for (const [key, label] of [['today', 'Today'], ['avoid', 'Avoid'], ['meal', 'Meal']]) {
@@ -135,11 +156,14 @@ function renderBrief(brief) {
     rows.append(row);
   }
   body.append(rows);
-  if (brief.why) body.append(element('p', brief.why, 'brief-why secondary'));
-  if (state.logs.some(log => log.sample)) body.append(element('p', 'Includes sample data. Replace it with your workouts for a personal brief.', 'secondary sample-footnote'));
+  if (brief.why) body.append(element('p', brief.why, 'brief-why'));
+  if (brief.adjusted) body.append(element('p', 'Checked against your recovery facts.', 'secondary adjustment-note'));
+  if (state.logs.some(log => log.sample)) body.append(element('p', 'Includes sample workouts.', 'secondary sample-footnote'));
   $('#brief-result').replaceChildren(body);
-  $('#source-badge').textContent = brief.inferenceSource === 'on_device' ? 'On this device' : 'Cloud (Gemini)';
-  $('#source-badge').hidden = false;
+  displayedSource = brief.inferenceSource;
+  renderSource();
+  $('#generation-meta').textContent = `${displayedSource === 'on_device' ? 'Made on this device' : 'Made in the cloud (Gemini)'} · ${(elapsedMs / 1000).toFixed(1)} s`;
+  $('#generation-meta').hidden = false;
 }
 
 function renderError(error) {
@@ -168,18 +192,16 @@ $('#check-in-form').addEventListener('submit', async event => {
   if (activeRequest) return;
   updateCheckIn();
   if (!validCheckIn(state.checkIn)) return;
-  if (state.logs.length === 0) {
-    resetBrief('Add a workout first, then check in for your daily brief.');
-    $('#add-workout').open = true; $('#workout-type').focus(); return;
-  }
   const id = ++requestNumber;
   activeRequest = new AbortController();
   $('#get-brief').disabled = true;
   $('#get-brief span').textContent = 'Creating your brief…';
   renderLoading();
   try {
+    const startedAt = performance.now();
     const brief = await coachAI.generateBrief({ logs: [...state.logs], checkIn: { ...state.checkIn }, today: localDate(), allowCloud: state.allowCloud, signal: activeRequest.signal });
-    if (id === requestNumber) renderBrief(brief);
+    const elapsedMs = performance.now() - startedAt;
+    if (id === requestNumber) renderBrief(brief, elapsedMs);
   } catch (error) {
     if (id === requestNumber) renderError(error);
   } finally {
@@ -190,6 +212,7 @@ $('#check-in-form').addEventListener('submit', async event => {
       $('#get-brief').disabled = false;
       $('#get-brief span').textContent = "Get today's brief";
       $('#brief-result').removeAttribute('aria-busy');
+      renderSource();
     }
     void refreshDevice();
   }
