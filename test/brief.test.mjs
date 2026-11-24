@@ -222,7 +222,10 @@ test('deterministic Avoid uses the selected workout title and relative date', ()
   const checked = checkBrief(brief, longFacts, today);
   assert.ok(checked.avoid.length <= 160);
   for (const area of AREAS) assert.ok(checked.avoid.includes(area));
-  assert.match(checked.avoid, /RPE 9 yesterday \/ today/);
+  assert.match(checked.avoid, /RPE 9 yesterday and today/);
+  // Area-prefixed sample titles drop the prefix so the sentence reads naturally.
+  const sample = recoveryFacts([{ ...session('legs'), title: 'Leg day · squats 5×5 heavy' }], moderate, today);
+  assert.equal(checkBrief(brief, sample, today).avoid, 'Skip hard legs — squats 5×5 heavy at RPE 9 yesterday.');
 });
 
 test('prompt dates, titles, notes and parsed brief fields never expose ISO dates', () => {

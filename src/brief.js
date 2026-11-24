@@ -140,16 +140,19 @@ function coachingWording(facts, date) {
       : [`Easy to moderate ${activity} for 20-40 min, RPE 4-6.`, `Try 20-40 min of easy to moderate ${activity}, RPE 4-6.`];
   let avoid;
   if (flagged.length) {
-    const dates = [...new Set(facts.avoidAreas.map(item => item.date))].sort().map(value => humanDate(value, date)).join(' / ');
+    const dates = [...new Set(facts.avoidAreas.map(item => item.date))].sort().map(value => humanDate(value, date)).join(' and ');
     const rpes = facts.avoidAreas.map(item => item.rpe);
     const rpe = Math.min(...rpes) === Math.max(...rpes) ? String(rpes[0]) : `${Math.min(...rpes)}-${Math.max(...rpes)}`;
-    const titles = facts.avoidAreas.map(item => humanizeDates(item.title, date)).filter(Boolean).join(' / ') || 'logged';
-    const prefix = `Skip hard ${flagged.join(', ')} — `;
+    // "Leg day · squats 5×5 heavy" → "squats 5×5 heavy": the area is already named, keep the exercise.
+    const titles = facts.avoidAreas.map(item => humanizeDates(item.title, date).split(' · ').pop().trim())
+      .filter(Boolean).map(title => /^[A-Z][a-z]/.test(title) ? title[0].toLowerCase() + title.slice(1) : title)
+      .join(' and ') || 'a hard session';
+    const areas = flagged.join(' and ');
+    const prefix = `Keep ${areas} easy today — `;
     const suffix = ` at RPE ${rpe} ${dates}.`;
     const budget = FIELD_LIMIT - prefix.length - suffix.length;
     const activity = titles.length > budget ? `${titles.slice(0, budget - 1).trim()}…` : titles;
-    const reason = `${flagged.join(', ')} — ${activity}${suffix}`;
-    avoid = [`Skip hard ${reason}`, `Give these areas a break from hard work: ${reason}`];
+    avoid = [`Skip hard ${areas} — ${activity}${suffix}`, `${prefix}${activity}${suffix}`];
   } else {
     avoid = facts.readiness === 'low'
       ? ['Skip hard efforts today; keep any movement easy while you recover.', 'Avoid intense training today. Give yourself an easy recovery day.']
