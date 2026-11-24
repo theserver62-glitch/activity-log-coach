@@ -5,3 +5,4 @@ import './store.test.mjs';
 import './sdk.test.mjs';
 import './loading.test.mjs';
 import './ui.test.mjs';
+import './demo.test.mjs';

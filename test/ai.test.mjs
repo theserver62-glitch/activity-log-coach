@@ -24,7 +24,7 @@ function harness({ status = 'available', online = true, source = 'on_device', co
   const sdk = {
     getApps: () => [],
     initializeApp: (options, settings) => { const app = { name: settings.name }; calls.push(['app', options, settings]); return app; },
-    initializeAppCheck: (app, options) => { calls.push(['appcheck', options, app]); return {}; },
+    initializeAppCheck: (app, options) => { calls.push(['appcheck', options, app, runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN]); return {}; },
     ReCaptchaEnterpriseProvider: class {}, GoogleAIBackend: class {},
     getAI: app => { calls.push(['ai', app]); return {}; },
     getGenerativeModel: (ai, options) => {
@@ -90,11 +90,27 @@ test('download starts create synchronously from click and reports progress, then
   assert.ok(calls.some(c => c[0] === 'destroy'));
 });
 test('debug token requires DEV and explicit opt-in; never enabled in production', async () => {
-  for (const dev of [true, false]) {
-    const { service, runtime } = harness({ config: { ...env, DEV: dev, VITE_APPCHECK_DEBUG_TOKEN: 'true' } });
-    await service.generateBrief({ ...input, allowCloud: true });
-    assert.equal(runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN, dev ? true : undefined);
+  const uuid = '12345678-1234-4abc-8def-123456789abc'; // Non-credential test fixture.
+  for (const dev of [true, false, undefined]) {
+    for (const [token, expected] of [
+      ['true', true], [uuid, uuid], [uuid.toUpperCase(), uuid.toUpperCase()], [` ${uuid} `, uuid],
+      [undefined, undefined], ['', undefined], ['false', undefined], ['not-a-token', undefined],
+      [`${uuid}-extra`, undefined], [uuid.replace(/-/g, ''), undefined],
+    ]) {
+      const { service, runtime, calls } = harness({ config: { ...env, DEV: dev, VITE_APPCHECK_DEBUG_TOKEN: token } });
+      await service.generateBrief({ ...input, allowCloud: true });
+      const value = dev ? expected : undefined;
+      assert.equal(runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN, value, `DEV=${dev}, token=${token}`);
+      assert.equal(calls.find(call => call[0] === 'appcheck')[3], value, 'debug provider must be selected before App Check initializes');
+    }
   }
+});
+
+test('DEV debug opt-in still requires cloud consent before initializing App Check', async () => {
+  const { service, runtime, calls } = harness({ config: { ...env, DEV: true, VITE_APPCHECK_DEBUG_TOKEN: 'true' } });
+  await service.generateBrief(input);
+  assert.equal(runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN, undefined);
+  assert.ok(!calls.some(call => call[0] === 'appcheck'));
 });
 test('revoking consent changes the next call to ONLY_ON_DEVICE', async () => {
   const { service, calls } = harness();

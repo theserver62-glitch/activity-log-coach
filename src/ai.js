@@ -47,8 +47,12 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
     const app = apps.get(name);
     if (useCloud && !appCheck) {
       // DEV is a Vite build-time flag. Production can never enable the debug provider.
-      if (env.DEV && env.VITE_APPCHECK_DEBUG_TOKEN === 'true') {
-        runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+      if (env.DEV) {
+        const debugToken = env.VITE_APPCHECK_DEBUG_TOKEN?.trim();
+        if (debugToken === 'true') runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+        else if (/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(debugToken ?? '')) {
+          runtime.self.FIREBASE_APPCHECK_DEBUG_TOKEN = debugToken;
+        }
       }
       appCheck = sdk.initializeAppCheck(app, {
         provider: new sdk.ReCaptchaEnterpriseProvider(env.VITE_APPCHECK_SITE_KEY.trim()),

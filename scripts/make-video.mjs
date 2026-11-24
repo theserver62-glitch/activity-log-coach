@@ -5,7 +5,6 @@ import { ROOT, DEMO, workspacePath, ffmpeg, mediaInfo } from './demo-media.mjs';
 
 const CARD_SECONDS = 3;
 const FONT = 'C\\:/Windows/Fonts/segoeui.ttf'; // Colon escaped for FFmpeg's filter parser, not a shell.
-const FRAME = 1 / 30;
 
 export function editTimeline(timeline, rawDuration) {
   if (!Array.isArray(timeline) || !timeline.length) throw new Error('Timeline must be a nonempty array.');
@@ -81,11 +80,12 @@ function wrapCaption(text) {
   const words = text.replace(/[<>{}\\]/g, '').split(/\s+/);
   const lines = [''];
   for (const word of words) {
+    if (word.length > 72) throw new Error('A caption word is too long. Shorten it to fit the caption band.');
     const last = lines.length - 1;
     if (lines[last] && lines[last].length + word.length + 1 > 72) lines.push(word);
     else lines[last] += `${lines[last] ? ' ' : ''}${word}`;
   }
-  if (lines.length > 3) throw new Error('A caption needs more than three lines. Shorten it to fit the bottom bar.');
+  if (lines.length > 2) throw new Error('A caption needs more than two lines. Shorten it to fit the caption band.');
   return lines.join('\n');
 }
 
@@ -113,24 +113,27 @@ export async function makeVideo({ rawPath, timelinePath, outputDir = DEMO }) {
   }
   const joined = edit.kept.map((_, i) => `[part${i}]`).join('');
   filters.push(`${joined}concat=n=${edit.kept.length}:v=1:a=0,` +
-    `tpad=stop_mode=clone:stop_duration=3,trim=duration=${edit.bodyDuration.toFixed(6)},setpts=PTS-STARTPTS[body]`);
+    `tpad=stop_mode=clone:stop_duration=3,trim=duration=${edit.bodyDuration.toFixed(6)},setpts=PTS-STARTPTS,` +
+    `pad=1280:820:0:0:color=0x202344[body]`);
   for (const [index, filename, name] of [[1, 'title.txt', 'title'], [2, 'end.txt', 'end']]) {
     filters.push(`[${index}:v]drawtext=fontfile='${FONT}':textfile='${filename}':expansion=none:` +
       `fontsize=42:fontcolor=0x17201B:line_spacing=18:x=(w-text_w)/2:y=(h-text_h)/2,setsar=1,settb=AVTB[${name}]`);
   }
-  // Force PlayRes too: otherwise SRT's default 384x288 canvas scales 30 to 75 px.
-  const style = 'PlayResX=1280,PlayResY=720,FontName=Segoe UI,Fontsize=30,PrimaryColour=&H00FFFFFF,' +
-    'BorderStyle=1,Outline=0,Shadow=0,Alignment=2,MarginL=48,MarginR=48,MarginV=26';
-  filters.push(`[title][body][end]concat=n=3:v=1:a=0,` +
-    `drawbox=x=0:y=ih-144:w=iw:h=144:color=black@0.68:t=fill:enable='between(t,3,${(3 + edit.bodyDuration - FRAME).toFixed(6)})',` +
-    // Relative subtitle path + cwd avoids Windows drive-colon/backslash ambiguity.
-    `subtitles=filename='captions.srt':original_size=1280x720:force_style='${style}',format=yuv420p[out]`);
+  // Render only inside the added strip. libass force_style uses SSA alignment
+  // values: 10 is middle-center. Matching PlayRes preserves the 28 px font size.
+  const style = 'PlayResX=1280,PlayResY=100,FontName=Segoe UI,Fontsize=28,PrimaryColour=&H00FFFFFF,' +
+    'BorderStyle=1,Outline=0,Shadow=0,Alignment=10,MarginL=48,MarginR=48,MarginV=0,WrapStyle=2';
+  filters.push('[title][body][end]concat=n=3:v=1:a=0,split[canvas][caption-source]');
+  // Relative subtitle path + cwd avoids Windows drive-colon/backslash ambiguity.
+  filters.push(`[caption-source]crop=1280:100:0:720,` +
+    `subtitles=filename='captions.srt':original_size=1280x100:force_style='${style}'[caption-band]`);
+  filters.push('[canvas][caption-band]overlay=x=0:y=720,format=yuv420p[out]');
   await writeFile(path.join(outputDir, 'render.ffgraph'), filters.join(';\n'));
   const pending = path.join(outputDir, '.rendering.mp4');
   console.log(`Rendering ${edit.duration.toFixed(2)} s (download cuts removed; 3 s title + 3 s end card)…`);
   await ffmpeg(['-y', '-i', rawPath,
-    '-f', 'lavfi', '-i', 'color=c=0xF2F4F0:s=1280x720:r=30:d=3',
-    '-f', 'lavfi', '-i', 'color=c=0xF2F4F0:s=1280x720:r=30:d=3',
+    '-f', 'lavfi', '-i', 'color=c=0xF2F4F0:s=1280x820:r=30:d=3',
+    '-f', 'lavfi', '-i', 'color=c=0xF2F4F0:s=1280x820:r=30:d=3',
     '-filter_complex_script', 'render.ffgraph', '-map', '[out]', '-an',
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-threads', '4',
     '-r', '30', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', pending], { cwd: outputDir });
@@ -138,8 +141,8 @@ export async function makeVideo({ rawPath, timelinePath, outputDir = DEMO }) {
   if (result.duration >= 180 || Math.abs(result.duration - edit.duration) > 0.2) {
     throw new Error(`Encoded duration ${result.duration}s did not meet the edit contract. See ${pending}.`);
   }
-  if (!/Video: h264/.test(result.output) || !/1280x720/.test(result.output) || !/30 fps/.test(result.output) || !/yuv420p/.test(result.output)) {
-    throw new Error('The encoded stream did not match H.264 / 1280x720 / 30 fps / yuv420p.');
+  if (!/Video: h264/.test(result.output) || !/1280x820/.test(result.output) || !/30 fps/.test(result.output) || !/yuv420p/.test(result.output)) {
+    throw new Error('The encoded stream did not match H.264 / 1280x820 / 30 fps / yuv420p.');
   }
   const output = path.join(outputDir, 'demo.mp4');
   await rename(pending, output);

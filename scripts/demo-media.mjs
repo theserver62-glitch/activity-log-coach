@@ -58,24 +58,3 @@ export async function preparePlaywrightVideo() {
   process.env.PLAYWRIGHT_BROWSERS_PATH = cache;
 }
 
-export async function stitchTakes(takes, output) {
-  output = workspacePath(output);
-  const cwd = path.dirname(output);
-  await mkdir(cwd, { recursive: true });
-  const inputs = [];
-  const filters = [];
-  for (const [index, take] of takes.entries()) {
-    const { duration } = await mediaInfo(take.file, cwd);
-    // Discard pre-scene blank frames. Date.now() anchors each take, and the saved
-    // video's duration aligns its tail with page.close(), to within frame rounding.
-    const offset = Math.max(0, duration - (take.closedAt - take.startedAt) / 1000);
-    inputs.push('-i', take.file);
-    filters.push(`[${index}:v]trim=start=${offset.toFixed(3)},setpts=PTS-STARTPTS,fps=30,` +
-      `tpad=stop_mode=clone:stop_duration=1,trim=duration=${take.duration.toFixed(3)},` +
-      `settb=AVTB,setsar=1[v${index}]`);
-  }
-  filters.push(takes.map((_, index) => `[v${index}]`).join('') + `concat=n=${takes.length}:v=1:a=0[out]`);
-  await ffmpeg(['-y', ...inputs, '-filter_complex', filters.join(';'), '-map', '[out]',
-    '-an', '-c:v', 'libvpx', '-deadline', 'realtime', '-cpu-used', '8', '-crf', '10',
-    '-b:v', '2M', '-threads', '4', '-pix_fmt', 'yuv420p', output], { cwd });
-}

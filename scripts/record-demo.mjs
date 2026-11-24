@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import { ROOT, DEMO, preparePlaywrightVideo, stitchTakes } from './demo-media.mjs';
+import { ROOT, DEMO, preparePlaywrightVideo } from './demo-media.mjs';
 
 if (process.argv.includes('--help')) {
   console.log('Usage: node scripts/record-demo.mjs [http://localhost:5173/]\nRun outside the sandbox, with real Chrome, Nano support, and configured Firebase/App Check.');
@@ -19,35 +19,19 @@ await preparePlaywrightVideo();
 const { chromium } = await import('playwright-core');
 const tmpProfileDir = await mkdtemp(path.join(DEMO, '.chrome-profile-'));
 const timeline = [];
-const takes = [];
 const timelinePath = path.join(DEMO, 'timeline.json');
+const raw = path.join(rawDir, '00-demo.webm');
 let context;
-let activeTake;
-let elapsed = 0;
+let video;
+let startedAt;
 let completed = false;
 let failure;
-const seconds = () => elapsed + (activeTake ? (Date.now() - activeTake.startedAt) / 1000 : 0);
+const seconds = () => startedAt === undefined ? 0 : (Date.now() - startedAt) / 1000;
 async function mark(caption = '', fields = {}) {
   const event = { t: Number(seconds().toFixed(3)), caption, ...fields };
   timeline.push(event);
   await writeFile(timelinePath, `${JSON.stringify(timeline, null, 2)}\n`);
   if (caption) console.log(`[${event.t.toFixed(1)}s] ${caption}`);
-}
-function startTake(page) {
-  activeTake = { page, startedAt: Date.now() };
-}
-async function finishTake() {
-  if (!activeTake) return;
-  const take = activeTake;
-  take.duration = (Date.now() - take.startedAt) / 1000;
-  elapsed += take.duration;
-  activeTake = undefined;
-  const video = take.page.video();
-  await take.page.close();
-  take.closedAt = Date.now();
-  if (!video) throw new Error('Chrome did not create a video for this page.');
-  take.file = await video.path();
-  takes.push(take);
 }
 async function holdScene(start, minimumSeconds) {
   await pause(Math.max(0, (minimumSeconds - (seconds() - start)) * 1000));
@@ -72,24 +56,36 @@ async function generate(page, source) {
     throw new Error(`Expected ${source}; got ${await meta.textContent()}`);
   }
   await page.locator('.brief-content').waitFor({ state: 'visible' });
-  await show(page, '.brief-section');
-  await pause(3500); // Every completed result gets at least 2.5 seconds on screen.
-  await show(page, '#generation-meta');
-  await pause(3500); // Keep the actual source/time readable too.
+  // At the desktop viewport, the title, check-in and complete brief share the frame.
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+  await pause(3000);
 }
 
 try {
   context = await chromium.launchPersistentContext(tmpProfileDir, {
     channel: 'chrome', headless: false,
     viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: 1,
+    args: ['--force-device-scale-factor=1'],
     recordVideo: { dir: 'demo/raw', size: { width: 1280, height: 720 } },
     // Chrome's component updater must be allowed to download Gemini Nano.
     ignoreDefaultArgs: ['--disable-component-update', '--disable-background-networking', '--disable-field-trial-config'],
   });
   context.setDefaultTimeout(30000);
   const page = context.pages()[0] || await context.newPage();
-  startTake(page);
+  video = page.video();
+  startedAt = Date.now();
+  if (!video) throw new Error('Chrome did not create a video for this page.');
+  await page.addInitScript(() => {
+    if (new URLSearchParams(location.search).has('nolocal')) {
+      Object.defineProperty(window, 'LanguageModel', { value: undefined, configurable: true });
+    }
+  });
   await page.goto(url.href, { waitUntil: 'domcontentloaded' });
+  const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+  if (viewport.width !== 1280 || viewport.height !== 720) {
+    throw new Error(`Expected a 1280x720 viewport; got ${viewport.width}x${viewport.height}. Check Windows display scaling.`);
+  }
   await page.locator('#sample-bar').waitFor({ state: 'visible' });
   await page.waitForFunction(() => document.querySelectorAll('#workout-list .workout-item').length === 3);
   if (await page.locator('#config-notice').isVisible()) {
@@ -122,9 +118,11 @@ try {
   for (let step = 0; step < 6; step++) await page.locator('#sleep').press('ArrowRight');
   await pause(1000);
   // Range controls do not support fill(); use keyboard input so the app receives input events.
+  await show(page, '#soreness');
   await page.locator('#soreness').focus();
   await page.locator('#soreness').press('Home');
   for (let step = 0; step < 4; step++) await page.locator('#soreness').press('ArrowRight');
+  await show(page, '#energy');
   await page.getByRole('slider', { name: 'Energy', exact: true }).focus();
   await page.getByRole('slider', { name: 'Energy', exact: true }).press('Home');
   await page.getByRole('slider', { name: 'Energy', exact: true }).press('ArrowRight');
@@ -157,58 +155,44 @@ try {
   }
   await holdScene(injectionStart, 25);
 
-  // Playwright records per page, not per browser window. A second real page
-  // gets its own take; stitchTakes joins both into the single raw input below.
-  // Open it before closing the first, so Chrome never loses its last tab.
-  const cloudPage = await context.newPage();
-  await cloudPage.addInitScript(() => {
-    delete window.LanguageModel;
-    Object.defineProperty(window, 'LanguageModel', { value: undefined });
-  });
-  await finishTake();
-  startTake(cloudPage);
+  // Navigate the same page so Playwright keeps all scenes in one video.
   const cloudStart = seconds();
   await mark('No on-device model? With your consent, Firebase AI Logic falls back to Gemini in the cloud, protected by App Check.');
-  await cloudPage.goto(url.href, { waitUntil: 'domcontentloaded' });
-  await cloudPage.bringToFront();
-  await status(cloudPage, 'unavailable');
-  await show(cloudPage, '#device-status');
+  const cloudUrl = new URL(url);
+  cloudUrl.searchParams.set('nolocal', '1');
+  await page.goto(cloudUrl.href, { waitUntil: 'domcontentloaded' });
+  await status(page, 'unavailable');
+  await show(page, '#device-status');
   await pause(3500);
-  await cloudPage.locator('#note').fill('');
-  await show(cloudPage, '#allow-cloud');
-  await cloudPage.getByRole('checkbox', { name: 'Allow cloud when on-device AI is unavailable' }).check();
+  await show(page, '#note');
+  await page.locator('#note').fill('');
+  await show(page, '#allow-cloud');
+  await page.getByRole('checkbox', { name: 'Allow cloud when on-device AI is unavailable' }).check();
   await pause(2500);
-  await generate(cloudPage, 'Made in the cloud');
+  await generate(page, 'Made in the cloud');
   await holdScene(cloudStart, 27);
 
   const endStart = seconds();
   await mark('Same button. On-device first, cloud when needed. Built with Firebase AI Logic.');
-  await show(cloudPage, '.brief-section');
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await holdScene(endStart, 8);
   await mark('', { end: true });
-  await finishTake();
   completed = true;
 } catch (error) {
   failure = error;
   await mark('', { failed: true, message: error.message });
 } finally {
-  if (activeTake) await finishTake().catch(error => { failure ||= error; });
-  await context?.close(); // Flush every page's video before reading/stitching files.
+  try {
+    await context?.close(); // Flush the recording, including a partially failed take.
+  } catch (error) { failure ||= error; }
+  if (video) {
+    try {
+      await rename(await video.path(), raw);
+      console.log(`Raw video: ${raw}`);
+    } catch (error) { failure ||= error; }
+  }
+  console.log(`Timeline: ${timelinePath}`);
+  console.log(`Profile retained for inspection: ${tmpProfileDir}`);
 }
 
 if (!completed || failure) throw failure || new Error('Recording did not finish.');
-await writeFile(path.join(DEMO, 'takes.json'), `${JSON.stringify(takes.map(({ page, ...take }) => take), null, 2)}\n`);
-const raw = path.join(rawDir, '00-demo.webm');
-console.log('Joining the two real page recordings…');
-await stitchTakes(takes, raw);
-const archive = await mkdtemp(path.join(DEMO, 'takes-'));
-for (const take of takes) {
-  const destination = path.join(archive, path.basename(take.file));
-  await rename(take.file, destination);
-  take.file = destination;
-}
-await writeFile(path.join(DEMO, 'takes.json'), `${JSON.stringify(takes.map(({ page, ...take }) => take), null, 2)}\n`);
-const firstWebm = (await readdir(rawDir)).filter(name => name.endsWith('.webm')).sort()[0];
-console.log(`Timeline: ${timelinePath}`);
-console.log(`Raw video: ${path.join(rawDir, firstWebm)}`);
-console.log(`Profile retained for inspection: ${tmpProfileDir}`);
