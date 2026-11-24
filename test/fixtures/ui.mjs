@@ -20,6 +20,7 @@ export function fakeClock() {
 }
 
 class Node {
+  constructor(tagName = 'div') { this.tagName = tagName; }
   children = [];
   listeners = new Map();
   attributes = new Map();
@@ -38,7 +39,7 @@ class Node {
   fire(name, extra = {}) { return this.listeners.get(name)?.({ preventDefault() {}, target: this, currentTarget: this, ...extra }); }
 }
 
-export async function appHarness({ local = true, logs = [] } = {}) {
+export async function appHarness({ local = true, logs = [], checkIn = {} } = {}) {
   const nodes = new Map();
   const get = selector => {
     if (!nodes.has(selector)) nodes.set(selector, new Node());
@@ -47,7 +48,7 @@ export async function appHarness({ local = true, logs = [] } = {}) {
   const clock = fakeClock();
   const warmups = [];
   const pending = [];
-  const state = { logs, checkIn: { date: brief.localDate(), sleep: 7, soreness: 3, energy: 'okay', note: '' }, allowCloud: !local, notice: '' };
+  const state = { logs, checkIn: { date: brief.localDate(), sleep: 7, soreness: 3, energy: 'okay', note: '', ...checkIn }, allowCloud: !local, notice: '' };
   const coachAI = {
     cloudConfigured: true,
     getDeviceStatus: async () => local ? 'available' : 'downloadable',
@@ -62,9 +63,9 @@ export async function appHarness({ local = true, logs = [] } = {}) {
     ...brief, coachAI, friendlyError: error => error.message, validWorkout, validCheckIn,
     delayedDeviceMessage: (onSlow, options) => delayedDeviceMessage(onSlow, { ...options, runtime: clock }),
     loadState: () => state, saveState: () => true,
-    document: { querySelector: get, createElement: () => new Node(), querySelectorAll: () => [] },
+    document: { querySelector: get, createElement: tag => new Node(tag), querySelectorAll: () => [] },
     window: new Node(), navigator: { onLine: true }, AbortController, performance,
-    FormData: class { get(key) { return state.checkIn[key]; } },
+    FormData: class { get(key) { return get(`#${key}`).value; } },
   }, { filename: 'src/main.js' });
   // Let the VM and host promise queues both finish the initial status refresh.
   await new Promise(resolve => setImmediate(resolve));

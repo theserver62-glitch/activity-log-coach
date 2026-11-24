@@ -12,6 +12,7 @@ let activeRequest;
 let requestNumber = 0;
 let displayedSource;
 const titleCase = text => text.charAt(0).toUpperCase() + text.slice(1);
+const energyLevels = ['low', 'okay', 'high'];
 
 // Never interpolate user or model content as HTML.
 function element(tag, text, className) {
@@ -48,16 +49,14 @@ function renderLogs() {
   const sorted = [...state.logs].sort((a, b) => b.date.localeCompare(a.date));
   for (const log of sorted) {
     const item = element('li', undefined, 'workout-item');
-    const day = element('div', undefined, 'workout-day');
-    const date = new Date(`${log.date}T12:00:00`);
-    day.append(element('span', new Intl.DateTimeFormat('en', { weekday: 'short' }).format(date), 'secondary'), element('strong', String(date.getDate())));
     const content = element('div', undefined, 'workout-content');
     content.append(element('h3', humanizeDates(log.title) || `${titleCase(log.type)} · ${log.bodyArea}`));
-    const meta = `${log.minutes} min · RPE ${log.rpe} · ${log.bodyArea}`;
-    content.append(element('p', meta, 'secondary'));
-    const time = element('time', `${humanDate(log.date)}${log.sample ? ' · Sample data' : ''}`, 'secondary workout-date');
+    const summary = element('p', undefined, 'secondary workout-summary');
+    const time = element('time', humanDate(log.date));
     time.dateTime = log.date;
-    content.append(time);
+    summary.append(time, element('span', ` · ${log.minutes} min · RPE ${log.rpe}`));
+    summary.append(element('span', ` · ${log.bodyArea}${log.sample ? ' · Sample data' : ''}`, 'sr-only'));
+    content.append(summary);
     const remove = element('button', '×', 'delete-button');
     remove.type = 'button';
     remove.setAttribute('aria-label', `Delete ${humanizeDates(log.title) || log.type} (${humanDate(log.date)})`);
@@ -69,7 +68,7 @@ function renderLogs() {
       const buttons = list.querySelectorAll('button');
       (buttons[Math.min(index, buttons.length - 1)] || $('#add-workout summary')).focus();
     });
-    item.append(day, content, remove);
+    item.append(content, remove);
     list.append(item);
   }
   $('#sample-bar').hidden = !state.logs.some(log => log.sample);
@@ -88,11 +87,12 @@ function renderPrivacy() {
 function renderSource() {
   const local = displayedSource === 'on_device';
   $('#source-badge').textContent = displayedSource
-    ? local ? '✓ On this device' : '☁ Generated in the cloud (Gemini)'
+    ? local ? '✓ On this device' : 'Cloud (Gemini)'
     : activeRequest ? '◌ Creating your brief'
       : deviceStatus === 'available' ? '✓ Ready on this device' : `◌ On-device model: ${deviceStatus}`;
   $('#source-help').textContent = local ? 'Your data stayed on this device.' : '';
   $('#source-help').hidden = !local;
+  $('#brief-start').hidden = Boolean(displayedSource || activeRequest);
   if (!displayedSource) {
     $('#generation-meta').textContent = '';
     $('#generation-meta').hidden = true;
@@ -122,11 +122,16 @@ async function refreshDevice() {
 
 function readCheckIn() {
   const form = new FormData($('#check-in-form'));
-  return { date: localDate(), sleep: Number(form.get('sleep')), soreness: Number(form.get('soreness')), energy: form.get('energy'), note: String(form.get('note')).slice(0, 140) };
+  return { date: localDate(), sleep: Number(form.get('sleep')), soreness: Number(form.get('soreness')), energy: energyLevels[Number(form.get('energy'))], note: String(form.get('note')).slice(0, 140) };
 }
 
 function updateCheckIn() {
-  $('#soreness-value').textContent = `${$('#soreness').value} / 10`;
+  const energy = titleCase(energyLevels[Number($('#energy').value)]);
+  $('#energy-value').textContent = energy;
+  $('#energy').setAttribute('aria-valuetext', energy);
+  $('#sleep-value').textContent = `${$('#sleep').value} h`;
+  $('#sleep').setAttribute('aria-valuetext', `${$('#sleep').value} hours`);
+  $('#soreness-value').textContent = `${$('#soreness').value}/10`;
   $('#soreness').setAttribute('aria-valuetext', `${$('#soreness').value} out of 10`);
   $('#note-count').textContent = `${$('#note').value.length} / 140`;
   const value = readCheckIn();
@@ -289,9 +294,9 @@ window.addEventListener('focus', () => {
 $('#today-date').textContent = new Intl.DateTimeFormat('en', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date());
 $('#workout-date').value = localDate();
 $('#workout-date').max = localDate();
-$('#sleep').value = state.checkIn.sleep;
+$('#sleep').value = Math.min(10, Math.max(3, Math.round(state.checkIn.sleep * 2) / 2));
 $('#soreness').value = state.checkIn.soreness;
-document.querySelectorAll('[name="energy"]').forEach(input => { input.checked = input.value === state.checkIn.energy; });
+$('#energy').value = energyLevels.indexOf(state.checkIn.energy);
 $('#note').value = state.checkIn.note;
 $('#storage-notice').textContent = state.notice;
 $('#storage-notice').hidden = !state.notice;

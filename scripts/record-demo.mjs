@@ -117,13 +117,17 @@ try {
   const localStart = seconds();
   await mark("Gemini Nano runs inside Chrome. Yesterday's RPE 9 leg day is respected: no hard legs today.");
   await show(page, '#sleep');
-  await page.locator('#sleep').fill('6');
+  await page.locator('#sleep').focus();
+  await page.locator('#sleep').press('Home');
+  for (let step = 0; step < 6; step++) await page.locator('#sleep').press('ArrowRight');
   await pause(1000);
   // Range controls do not support fill(); use keyboard input so the app receives input events.
   await page.locator('#soreness').focus();
   await page.locator('#soreness').press('Home');
   for (let step = 0; step < 4; step++) await page.locator('#soreness').press('ArrowRight');
-  await page.getByRole('radio', { name: 'Okay', exact: true }).check();
+  await page.getByRole('slider', { name: 'Energy', exact: true }).focus();
+  await page.getByRole('slider', { name: 'Energy', exact: true }).press('Home');
+  await page.getByRole('slider', { name: 'Energy', exact: true }).press('ArrowRight');
   await pause(1500);
   await generate(page, 'Made on this device');
   await holdScene(localStart, 26);

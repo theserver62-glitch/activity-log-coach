@@ -48,7 +48,7 @@ All project code was written during **November 24–30, 2026** for #BuildHybridA
 
 ## Pre-existing work
 
-The visual design tokens were adapted from the author's own **Activity Log** app. No other code was reused. Firebase, Vite, Playwright, and FFmpeg are existing third-party tools and dependencies.
+The visual design tokens were adapted from the author's own **Activity Log** app. No other code was reused. Firebase, Vite, Playwright, and FFmpeg are existing third-party tools and dependencies. The code was written with AI coding assistants (OpenAI Codex and Claude Code) under the author's direction.
 
 ## Built with
 

@@ -107,7 +107,7 @@ test('workout UI displays relative dates and humanizes dates embedded in titles'
   const list = app.get('#workout-list');
   assert.doesNotMatch(list.textContent, /\d{4}-\d{2}-\d{2}/);
   for (const label of ['today', 'yesterday', '2 days ago']) assert.ok(list.textContent.includes(label));
-  for (const item of list.children) assert.doesNotMatch(item.children[2].attributes.get('aria-label'), /\d{4}-\d{2}-\d{2}/);
+  for (const item of list.children) assert.doesNotMatch(item.children.find(child => child.tagName === 'button').attributes.get('aria-label'), /\d{4}-\d{2}-\d{2}/);
 });
 
 test('loading animations remain disabled for prefers-reduced-motion', () => {
