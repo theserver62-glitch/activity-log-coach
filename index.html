@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#F4F5FA" />
+    <meta name="description" content="Turn your recent workouts and today's check-in into a thoughtful daily brief. On-device first. Cloud only with your permission." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='12' fill='%23202344'/%3E%3Cpath d='M10 25h8l4-10 5 19 4-9h7' fill='none' stroke='white' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <title>Activity Log Coach</title>
+    <script type="module" crossorigin src="/activity-log-coach/assets/index-cShSmUEx.js"></script>
+    <link rel="stylesheet" crossorigin href="/activity-log-coach/assets/index-DWLVdjrY.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#check-in">Skip to today's check-in</a>
+    <div class="app-shell">
+      <header class="intro">
+        <p class="eyebrow" id="today-date"></p>
+        <h1>Your workout plan for today.</h1>
+        <p>Add your workouts and how you feel. Get a plan for training, recovery, and food.</p>
+      </header>
+      <p id="storage-notice" class="notice secondary" role="status" hidden></p>
+      <p id="network-status" class="notice" role="status" hidden></p>
+
+      <main class="workspace">
+        <section class="history" aria-labelledby="history-title">
+          <div class="section-heading"><h2 id="history-title">Recent workouts</h2></div>
+          <p class="section-description">The last 7 days shape your brief.</p>
+          <div class="sample-bar" id="sample-bar"><span class="badge">Sample data</span><button class="text-button" id="clear-samples" type="button">Clear samples</button></div>
+          <ul id="workout-list" class="workout-list" aria-label="Workout history"></ul>
+          <div id="empty-logs" class="empty-state" hidden><h3>A fresh start.</h3><p>Add your first workout. A little context helps your coach find the right pace.</p><button class="text-button" id="add-first" type="button">Add a workout <span aria-hidden="true">↗</span></button></div>
+          <p id="log-status" class="sr-only" role="status"></p>
+
+          <details class="add-workout" id="add-workout">
+            <summary>Add a workout <span aria-hidden="true">›</span></summary>
+            <form id="workout-form" class="form-grid">
+              <label class="span-two">Type<select name="type" id="workout-type"><option value="strength">Strength</option><option value="run">Run</option><option value="ride">Ride</option><option value="swim">Swim</option><option value="yoga">Yoga</option><option value="other">Other</option></select></label>
+              <label class="span-two">Body area<select name="bodyArea"><option value="legs">Legs</option><option value="upper push">Upper push</option><option value="upper pull">Upper pull</option><option value="core">Core</option><option value="full body">Full body</option><option value="cardio">Cardio</option></select></label>
+              <label>Minutes<input name="minutes" type="number" min="1" max="600" step="1" value="30" required inputmode="numeric" /></label>
+              <label>Effort (RPE 1–10)<input name="rpe" type="number" min="1" max="10" step="1" value="5" required inputmode="numeric" /></label>
+              <label class="span-two">Date<input name="date" id="workout-date" type="date" required /></label>
+              <button class="secondary-button span-two" type="submit">Save workout</button>
+            </form>
+          </details>
+          <div class="history-note"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3" stroke="currentColor" stroke-width="1.75"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg><p class="secondary">Your logs stay in this browser.<br />No account. No analytics.</p></div>
+        </section>
+
+          <section id="check-in" aria-labelledby="check-in-title" tabindex="-1">
+            <div class="section-heading"><h2 id="check-in-title">Today's check-in</h2></div>
+            <p class="section-description">How are you arriving today?</p>
+            <form id="check-in-form">
+              <div class="check-in-grid">
+                <div class="range-field">
+                  <label for="energy">How is your energy?</label>
+                  <output class="range-value" id="energy-value" for="energy">Okay</output>
+                  <input id="energy" name="energy" type="range" min="0" max="2" step="1" value="1" aria-label="Energy" />
+                  <div class="range-labels secondary" aria-hidden="true"><span>Low</span><span>Okay</span><span>High</span></div>
+                </div>
+                <div class="range-field">
+                  <label for="sleep">How much did you sleep?</label>
+                  <output class="range-value" id="sleep-value" for="sleep">7 h</output>
+                  <input id="sleep" name="sleep" type="range" min="3" max="10" step="0.5" value="7" aria-label="Sleep" />
+                  <div class="range-labels secondary" aria-hidden="true"><span>3 h</span><span>6.5 h</span><span>10 h</span></div>
+                </div>
+                <div class="range-field">
+                  <label for="soreness">How sore do you feel?</label>
+                  <output class="range-value" id="soreness-value" for="soreness">3/10</output>
+                  <input id="soreness" name="soreness" type="range" min="0" max="10" step="1" value="3" aria-label="Soreness" />
+                  <div class="range-labels secondary" aria-hidden="true"><span>None</span><span>Moderate</span><span>Very sore</span></div>
+                </div>
+              </div>
+              <label class="note-label" for="note"><span>Anything else? <span class="secondary">Optional</span></span><textarea id="note" name="note" rows="2" maxlength="140" placeholder="A stiff shoulder, a long day…" aria-describedby="note-count"></textarea></label>
+              <p class="secondary note-count" id="note-count">0 / 140</p>
+
+              <button class="primary-button" id="get-brief" type="submit"><span>Get today's brief</span></button>
+            </form>
+          </section>
+
+        <div class="result-column">
+          <section class="brief-section" aria-labelledby="brief-title">
+            <p class="start-chip" id="brief-start">Start here today</p>
+            <div class="brief-heading"><h2 id="brief-title">Today's brief</h2><span class="source-badge" id="source-badge" role="status">◌ Checking on-device model</span></div>
+            <p class="secondary source-help" id="source-help" hidden></p>
+            <div id="brief-result" aria-live="polite" aria-atomic="true"><div class="brief-placeholder"><p>Your next step starts here</p><p class="secondary">Check in for a plan for training, recovery, and food.</p></div></div>
+            <p class="secondary generation-meta" id="generation-meta" hidden></p>
+            <p class="secondary disclaimer">Not medical advice. Listen to your body.</p>
+          </section>
+
+          <div class="privacy-settings">
+            <label class="toggle-label"><input type="checkbox" id="allow-cloud" aria-label="Allow cloud when on-device AI is unavailable" aria-describedby="privacy-explanation config-notice" /><span class="toggle-track" aria-hidden="true"></span><span>Cloud fallback</span><span class="secondary cloud-status" id="cloud-status">Off</span></label>
+            <p class="secondary" id="privacy-explanation">Off by default. Your workouts and check-in stay on this device.</p>
+            <p class="secondary config-notice" id="config-notice" hidden>Cloud fallback not configured</p>
+          </div>
+
+          <section class="device-section" aria-label="On-device AI status">
+            <div class="device-heading"><span class="status-dot" aria-hidden="true"></span><p id="device-status" class="secondary" role="status">On-device model: checking…</p><button type="button" id="refresh-model" class="text-button">Check again</button></div>
+            <div id="download-area" hidden><button type="button" id="download-model" class="secondary-button">Download on-device model</button><p class="secondary">Chrome downloads Gemini Nano. This may take a few minutes.</p></div>
+            <div id="download-progress-area" hidden><label for="download-progress" class="secondary">Model download</label><progress id="download-progress" max="1" value="0"></progress><p id="download-status" role="status" class="secondary"></p></div>
+            <p id="device-help" class="secondary"></p>
+          </section>
+        </div>
+      </main>
+      <footer><a class="brand" href="./" aria-label="Activity Log Coach home">Activity Log Coach</a><span>Built for #BuildHybridAI · 2026</span></footer>
+    </div>
+    <noscript>This app needs JavaScript to save your workouts and create a brief.</noscript>
+  </body>
+</html>
