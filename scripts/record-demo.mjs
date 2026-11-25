@@ -17,7 +17,8 @@ if ((await readdir(rawDir)).some(name => name.endsWith('.webm'))) {
 }
 await preparePlaywrightVideo();
 const { chromium } = await import('playwright-core');
-const tmpProfileDir = await mkdtemp(path.join(DEMO, '.chrome-profile-'));
+// DEMO_PROFILE reuses a profile that already holds Gemini Nano (about 4 GB), so takes skip the download.
+const tmpProfileDir = process.env.DEMO_PROFILE || await mkdtemp(path.join(DEMO, '.chrome-profile-'));
 const timeline = [];
 const timelinePath = path.join(DEMO, 'timeline.json');
 const raw = path.join(rawDir, '00-demo.webm');

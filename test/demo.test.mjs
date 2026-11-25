@@ -33,6 +33,14 @@ test('captions that exceed the two-line band fail instead of covering the app', 
   assert.throws(() => makeSrt([{ start: 3, end: 8, caption: 'W'.repeat(73) }]), /word is too long/);
 });
 
+test('small clock drift is spread over the take; a mismatched recording still fails', () => {
+  const take = [{ t: 0, caption: 'Opening' }, { t: 50.5, caption: 'Cloud' }, { t: 101, caption: '', end: true }];
+  const edit = editTimeline(take, 100);
+  assert.deepEqual(edit.kept, [[0, 100]]);
+  assert.equal(edit.captions[1].start, 3 + 50);
+  assert.throws(() => editTimeline(take, 90), /extends past the raw video/);
+});
+
 test('saved failed recordings cannot be presented as a completed demo', () => {
   assert.throws(() => editTimeline([
     { t: 0, caption: 'Opening scene' },

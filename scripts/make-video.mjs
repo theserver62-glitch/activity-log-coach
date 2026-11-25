@@ -8,6 +8,11 @@ const FONT = 'C\\:/Windows/Fonts/segoeui.ttf'; // Colon escaped for FFmpeg's fil
 
 export function editTimeline(timeline, rawDuration) {
   if (!Array.isArray(timeline) || !timeline.length) throw new Error('Timeline must be a nonempty array.');
+  // The recorded video can run about 1% shorter than wall-clock time; spread small drift instead of rejecting the take.
+  const last = timeline.at(-1).t;
+  if (Number.isFinite(last) && last > rawDuration + 0.25 && last <= rawDuration * 1.03) {
+    timeline = timeline.map(event => ({ ...event, t: event.t * rawDuration / last }));
+  }
   const cuts = [];
   let cutStart;
   let previous = -1;
