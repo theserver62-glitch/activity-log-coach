@@ -4,7 +4,7 @@ An English, single-screen web app for Google's **#BuildHybridAI** hackathon. Rec
 
 Live demo: https://theserver62-glitch.github.io/activity-log-coach/
 
-Demo video: (YouTube link — added at submission)
+Demo video: https://youtu.be/rqX6YVdSDjE
 
 The live address is the publication target; it will be available after the Pages deployment. The Devpost story is in [DEVPOST.md](DEVPOST.md). Submission deadline: **November 30, 2026, 2:00 PM PT**.
 
