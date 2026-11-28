@@ -109,11 +109,15 @@ try {
   await page.locator('#ai-settings').evaluate(details => { details.open = true; });
   await page.locator('#allow-cloud').uncheck();
   await page.locator('#ai-settings').evaluate(details => { details.open = false; });
+  // Open on a clean load: no settings panel or "preference saved" notice left from the setup above.
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => document.querySelectorAll('#workout-list .workout-item').length === 3);
   const opening = seconds();
   await mark("Activity Log Coach turns your recent workouts and today's check-in into a plan.");
   await holdScene(opening, 9);
   await page.waitForFunction(() => /: (available|downloadable|downloading|unavailable)$/.test(document.querySelector('#device-status')?.textContent || ''));
-  const device = await page.locator('#device-status').innerText();
+  // textContent: the status sits inside the folded AI settings, where innerText is empty.
+  const device = await page.locator('#device-status').textContent();
   if (/downloadable|downloading/.test(device)) {
     await mark('', { cutStart: true });
     await show(page, '#download-model');
@@ -151,7 +155,7 @@ try {
   await context.setOffline(true);
   await page.locator('#network-status').waitFor({ state: 'visible' });
   await show(page, '#network-status');
-  await mark('Offline? Still works — the brief is made on this device.');
+  await mark('Offline? Still works — the workout is picked on this device.');
   await pause(2500);
   await generate(page, 'Made on this device');
   await holdScene(offlineStart, 21);

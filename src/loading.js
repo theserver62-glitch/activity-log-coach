@@ -1,4 +1,4 @@
-export const WARMUP_MESSAGE = 'Warming up the on-device model — the first brief can take about 10 seconds.';
+export const WARMUP_MESSAGE = 'Warming up the on-device model — the first answer can take about 10 seconds.';
 
 // One quiet text change; existing skeleton CSS handles reduced-motion settings.
 export function delayedDeviceMessage(onSlow, { signal, runtime = globalThis } = {}) {

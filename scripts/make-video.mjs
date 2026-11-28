@@ -113,16 +113,16 @@ export async function makeVideo({ rawPath, timelinePath, outputDir = DEMO }) {
   for (const [[start, end], index] of edit.kept.map((segment, i) => [segment, i])) {
     const source = edit.kept.length > 1 ? `source${index}` : '0:v';
     filters.push(`[${source}]trim=start=${start.toFixed(3)}:end=${end.toFixed(3)},setpts=PTS-STARTPTS,` +
-      `scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=0xF2F4F0,` +
+      `scale=1280:720:force_original_aspect_ratio=decrease:in_range=pc:out_range=tv,pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=0xF2F3F4,` +
       `fps=30,setsar=1,settb=AVTB[part${index}]`);
   }
   const joined = edit.kept.map((_, i) => `[part${i}]`).join('');
   filters.push(`${joined}concat=n=${edit.kept.length}:v=1:a=0,` +
     `tpad=stop_mode=clone:stop_duration=3,trim=duration=${edit.bodyDuration.toFixed(6)},setpts=PTS-STARTPTS,` +
-    `pad=1280:820:0:0:color=0x202344[body]`);
+    `pad=1280:820:0:0:color=0x1A1D20[body]`);
   for (const [index, filename, name] of [[1, 'title.txt', 'title'], [2, 'end.txt', 'end']]) {
     filters.push(`[${index}:v]drawtext=fontfile='${FONT}':textfile='${filename}':expansion=none:` +
-      `fontsize=42:fontcolor=0x17201B:line_spacing=18:x=(w-text_w)/2:y=(h-text_h)/2,setsar=1,settb=AVTB[${name}]`);
+      `fontsize=42:fontcolor=0x1A1D20:line_spacing=18:x=(w-text_w)/2:y=(h-text_h)/2,setsar=1,settb=AVTB[${name}]`);
   }
   // Render only inside the added strip. libass force_style uses SSA alignment
   // values: 10 is middle-center. Matching PlayRes preserves the 28 px font size.
@@ -137,8 +137,8 @@ export async function makeVideo({ rawPath, timelinePath, outputDir = DEMO }) {
   const pending = path.join(outputDir, '.rendering.mp4');
   console.log(`Rendering ${edit.duration.toFixed(2)} s (download cuts removed; 3 s title + 3 s end card)…`);
   await ffmpeg(['-y', '-i', rawPath,
-    '-f', 'lavfi', '-i', 'color=c=0xF2F4F0:s=1280x820:r=30:d=3',
-    '-f', 'lavfi', '-i', 'color=c=0xF2F4F0:s=1280x820:r=30:d=3',
+    '-f', 'lavfi', '-i', 'color=c=0xF2F3F4:s=1280x820:r=30:d=3',
+    '-f', 'lavfi', '-i', 'color=c=0xF2F3F4:s=1280x820:r=30:d=3',
     '-filter_complex_script', 'render.ffgraph', '-map', '[out]', '-an',
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-threads', '4',
     '-r', '30', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', pending], { cwd: outputDir });

@@ -118,7 +118,7 @@ function renderSource() {
 function renderNetwork() {
   $('#network-status').hidden = navigator.onLine;
   $('#network-status').textContent = deviceStatus === 'available'
-    ? 'You’re offline. Your downloaded on-device model can still create a brief.'
+    ? 'You’re offline. Your downloaded on-device model can still pick today’s workout.'
     : 'You’re offline. Logging still works. Reconnect to download the on-device model or use cloud AI.';
 }
 

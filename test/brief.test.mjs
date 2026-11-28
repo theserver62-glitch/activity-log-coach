@@ -167,7 +167,7 @@ test('parser caps and trims all fields to 160 characters', () => {
 });
 test('garbage, missing or mistyped fields, arrays and empty replies produce an error', () => {
   for (const raw of ['oops', '', 'null', '[]', '42', 'Today: Walk', '{"today":7,"avoid":"a","meal":"b"}', '{"today":" ","avoid":"a","meal":"b"}', null]) {
-    assert.throws(() => parseBrief(raw), /brief/);
+    assert.throws(() => parseBrief(raw), /answer/);
   }
 });
 

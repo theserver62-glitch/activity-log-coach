@@ -46,7 +46,7 @@ export function tidyMeal(text) {
 }
 
 export function recentWorkouts(logs, today = localDate()) {
-  if (!isDate(today)) throw new Error('A valid date is needed for your brief.');
+  if (!isDate(today)) throw new Error('A valid date is needed for today’s workout.');
   const start = new Date(`${today}T12:00:00`);
   start.setDate(start.getDate() - 6);
   const since = localDate(start);
@@ -59,7 +59,7 @@ function clean(value, limit) {
 }
 
 export function recoveryFacts(logs, checkIn, today = localDate()) {
-  if (!isDate(today)) throw new Error('A valid date is needed for your brief.');
+  if (!isDate(today)) throw new Error('A valid date is needed for today’s workout.');
   const previous = new Date(`${today}T12:00:00`);
   previous.setDate(previous.getDate() - 1);
   const yesterday = localDate(previous);
@@ -222,7 +222,7 @@ If no recent workouts exist, say so instead of citing older workouts. Return onl
 
 export function parseBrief(raw, facts, today = localDate()) {
   if (typeof raw !== 'string' || !raw.trim() || raw.length > 24000) {
-    throw new Error('The brief was not readable. Please try again.');
+    throw new Error('The answer was not readable. Please try again.');
   }
   const text = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
   let data;
@@ -248,7 +248,7 @@ export function parseBrief(raw, facts, today = localDate()) {
   // a conflicting exercise or out-of-range effort beyond the display limit.
   if (facts && clean(humanizeDates(data.today, today), 24000).length > FIELD_LIMIT) result.today = '';
   if ((!result.today && !clean(data.today, 24000)) || !result.avoid || !result.meal) {
-    throw new Error('The brief was incomplete. Please try again.');
+    throw new Error('The answer was incomplete. Please try again.');
   }
   // Legacy labeled replies may omit Why; do not fabricate an explanation.
   return facts ? checkBrief(result, facts, today) : result;

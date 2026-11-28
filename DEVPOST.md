@@ -6,7 +6,7 @@ A workout log records what happened. It does not always help decide what to do t
 
 ## What it does
 
-Activity Log Coach turns recent workouts and today's sleep, soreness, energy, and optional note into a brief: **Today**, **Avoid**, **Meal**, and a short explanation. It opens with labeled sample workouts, including yesterday's RPE 9 squats, so the recovery decision is easy to inspect.
+Activity Log Coach turns recent workouts and today's sleep, soreness, energy, and optional note into today's workout: **Today**, **Avoid**, **Meal**, and a short explanation. Step 1 asks how you feel; step 2 shows the workout and where it was made. It opens with labeled sample workouts, including yesterday's RPE 9 squats, so the recovery decision is easy to inspect.
 
 The app tries on-device AI first. A downloaded Gemini Nano model can write another brief while the already-open page is offline. If local AI is unavailable, the user can explicitly allow cloud fallback. Each result reports where it was generated and how long it took. Offline reloads are not supported; the app and model must be loaded first.
 
@@ -48,7 +48,7 @@ All project code was written during **November 24–30, 2026** for #BuildHybridA
 
 ## Pre-existing work
 
-The visual design tokens were adapted from the author's own **Activity Log** app. No other code was reused. Firebase, Vite, Playwright, and FFmpeg are existing third-party tools and dependencies. The code was written with AI coding assistants (OpenAI Codex and Claude Code) under the author's direction.
+The color palette (black and lime) comes from the author's own **Activity Log** app. No other code was reused. Firebase, Vite, Playwright, FFmpeg, and the Manrope and IBM Plex Sans fonts (SIL Open Font License) are existing third-party tools and assets. The code was written with AI coding assistants (OpenAI Codex and Claude Code) under the author's direction.
 
 ## Built with
 

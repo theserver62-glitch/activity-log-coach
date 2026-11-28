@@ -115,9 +115,9 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
         throw new CoachError('offline', 'You’re offline and the on-device model is not ready. Reconnect to download it or use cloud AI.');
       }
       if (status === 'downloadable' || status === 'downloading') {
-        throw new CoachError('download', 'Download the on-device model below, then try your brief again. Cloud AI is used only with your permission.');
+        throw new CoachError('download', 'Download the on-device model below, then try again. Cloud AI is used only with your permission.');
       }
-      throw new CoachError('device', 'On-device AI is unavailable in this browser. You can allow cloud AI to get your brief.');
+      throw new CoachError('device', 'On-device AI is unavailable in this browser. You can allow cloud AI to get today’s workout.');
     }
     const facts = recoveryFacts(logs, checkIn, today);
     const prompt = buildPrompt(logs, checkIn, today);
@@ -147,7 +147,7 @@ export function createAIService({ env = import.meta.env ?? {}, runtime = globalT
     signal?.throwIfAborted();
     const source = response.inferenceSource;
     if (source !== InferenceSource.ON_DEVICE && source !== InferenceSource.IN_CLOUD) {
-      throw new CoachError('source', 'The AI did not report where this brief was made. Please try again.');
+      throw new CoachError('source', 'The AI did not report where this workout was made. Please try again.');
     }
     return { ...parseBrief(response.text(), facts, today), inferenceSource: source };
   }
@@ -159,8 +159,8 @@ export const coachAI = createAIService();
 
 export function friendlyError(error) {
   if (error instanceof CoachError) return error.message;
-  if (/parse|incomplete|readable/i.test(error?.message ?? '')) return 'The AI returned an incomplete brief. Please try again.';
+  if (/parse|incomplete|readable/i.test(error?.message ?? '')) return 'The AI returned an incomplete answer. Please try again.';
   if (/429|quota|resource-exhausted/i.test(`${error?.code} ${error?.message}`)) return 'Cloud AI is busy or its quota is used up. Try again later, or use on-device AI.';
   if (/app.?check|403|401|api.key|permission/i.test(`${error?.code} ${error?.message}`)) return 'Cloud AI could not connect. Check the Firebase and App Check setup, then retry.';
-  return 'Your brief could not be created. Check the on-device model or your connection, then try again.';
+  return 'Today’s workout could not be created. Check the on-device model or your connection, then try again.';
 }
