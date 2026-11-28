@@ -1,3 +1,6 @@
+import '@fontsource/manrope/latin-800.css';
+import '@fontsource/ibm-plex-sans/latin-400.css';
+import '@fontsource/ibm-plex-sans/latin-600.css';
 import './styles.css';
 import { coachAI, friendlyError } from './ai.js';
 import { localDate, recentWorkouts, humanDate, humanizeDates } from './brief.js';
@@ -29,18 +32,31 @@ function persist() {
   }
 }
 
-function resetBrief(message = 'Your context changed. Get a new brief when you’re ready.') {
+// Two views: 'checkin' asks one question; 'brief' shows the answer with its source.
+function setView(view) {
+  $('.workspace').setAttribute('data-view', view);
+  for (const li of document.querySelectorAll('.stepper li')) {
+    if (li.dataset.view === view) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+  }
+  $('#peek').open = false;
+}
+
+function resetBrief(message) {
   requestNumber += 1;
   activeRequest?.abort();
   activeRequest = undefined;
   $('#get-brief').disabled = false;
-  $('#get-brief span').textContent = "Get today's brief";
+  $('#get-brief span').textContent = "Show today's workout";
   $('#brief-result').removeAttribute('aria-busy');
   displayedSource = undefined;
   renderSource();
   const placeholder = element('div', undefined, 'brief-placeholder');
-  placeholder.append(element('p', 'Your next step starts here'), element('p', message, 'secondary'));
+  placeholder.append(element('p', 'Your plan appears here'), element('p', message ?? 'Your context changed. Show today’s workout again when you’re ready.', 'secondary'));
   $('#brief-result').replaceChildren(placeholder);
+  // Anything that clears the brief sends the person back to step 1, where the button is.
+  setView('checkin');
+  $('#checkin-status').textContent = message ?? '';
+  $('#checkin-status').hidden = message === undefined;
 }
 
 function renderLogs() {
@@ -88,7 +104,7 @@ function renderSource() {
   const local = displayedSource === 'on_device';
   $('#source-badge').textContent = displayedSource
     ? local ? '✓ On this device' : 'Cloud (Gemini)'
-    : activeRequest ? '◌ Creating your brief'
+    : activeRequest ? '◌ Picking your workout'
       : deviceStatus === 'available' ? '✓ Ready on this device' : `◌ On-device model: ${deviceStatus}`;
   $('#source-help').textContent = local ? 'Your data stayed on this device.' : '';
   $('#source-help').hidden = !local;
@@ -115,7 +131,7 @@ async function refreshDevice() {
   $('#download-model').disabled = !navigator.onLine;
   $('#device-help').textContent = deviceStatus === 'unavailable'
     ? 'Use a supported Chrome desktop browser for Gemini Nano, or allow cloud AI.'
-    : deviceStatus === 'available' ? 'Ready here. Your brief can work without a connection.' : '';
+    : deviceStatus === 'available' ? 'Ready here. Works without a connection.' : '';
   renderNetwork();
   renderSource();
 }
@@ -177,7 +193,7 @@ function renderBrief(brief, elapsedMs) {
 function renderError(error) {
   const body = element('div', undefined, 'brief-error');
   body.append(element('h3', 'Let’s try that again.'), element('p', friendlyError(error)));
-  const retry = element('button', 'Retry brief', 'text-button');
+  const retry = element('button', 'Try again', 'text-button');
   retry.type = 'button';
   retry.addEventListener('click', () => $('#check-in-form').requestSubmit());
   body.append(retry);
@@ -186,7 +202,7 @@ function renderError(error) {
     enable.type = 'button';
     enable.addEventListener('click', () => {
       state.allowCloud = true; persist(); renderPrivacy();
-      resetBrief(coachAI.cloudConfigured ? 'Cloud fallback is allowed. Get your brief when you’re ready.' : 'Cloud fallback not configured. Add Firebase settings to enable it; on-device AI is still available on supported devices.');
+      resetBrief(coachAI.cloudConfigured ? 'Cloud fallback is allowed. Show today’s workout when you’re ready.' : 'Cloud fallback not configured. Add Firebase settings to enable it; on-device AI is still available on supported devices.');
       $('#get-brief').focus();
     });
     body.append(enable);
@@ -200,10 +216,15 @@ $('#check-in-form').addEventListener('submit', async event => {
   if (activeRequest) return;
   updateCheckIn();
   if (!validCheckIn(state.checkIn)) return;
+  const { energy, sleep, soreness, note } = state.checkIn;
+  $('#checkin-summary').textContent = `Energy ${titleCase(energy)} · Sleep ${sleep} h · Soreness ${soreness}/10${note ? ' · Note added' : ''}`;
+  $('#checkin-status').hidden = true;
+  setView('brief');
+  $('#brief-title').focus();
   const id = ++requestNumber;
   activeRequest = new AbortController();
   $('#get-brief').disabled = true;
-  $('#get-brief span').textContent = 'Creating your brief…';
+  $('#get-brief span').textContent = 'Picking your workout…';
   const loadingMessage = renderLoading();
   const signal = activeRequest.signal;
   let stopLoadingMessage;
@@ -228,7 +249,7 @@ $('#check-in-form').addEventListener('submit', async event => {
       activeRequest?.abort();
       activeRequest = undefined;
       $('#get-brief').disabled = false;
-      $('#get-brief span').textContent = "Get today's brief";
+      $('#get-brief span').textContent = "Show today's workout";
       $('#brief-result').removeAttribute('aria-busy');
       renderSource();
     }
@@ -242,7 +263,7 @@ $('#check-in-form').addEventListener('input', event => {
 });
 $('#allow-cloud').addEventListener('change', event => {
   state.allowCloud = event.target.checked;
-  persist(); renderPrivacy(); resetBrief('Privacy preference saved. Get a new brief when you’re ready.');
+  persist(); renderPrivacy(); resetBrief('Privacy preference saved. Show today’s workout again when you’re ready.');
 });
 $('#workout-form').addEventListener('submit', event => {
   event.preventDefault();
@@ -257,10 +278,11 @@ $('#workout-form').addEventListener('submit', event => {
 });
 $('#clear-samples').addEventListener('click', () => {
   state.logs = state.logs.filter(log => !log.sample);
-  persist(); renderLogs(); resetBrief('Sample data cleared. Add a workout to make this brief yours.');
+  persist(); renderLogs(); resetBrief('Sample data cleared. Add a workout so the pick fits you.');
   $('#log-status').textContent = 'Sample workouts cleared.';
   $('#add-workout').open = true; $('#workout-type').focus();
 });
+$('#edit-checkin').addEventListener('click', () => { setView('checkin'); $('#check-in').focus(); });
 $('#add-first').addEventListener('click', () => { $('#add-workout').open = true; $('#workout-type').focus(); });
 $('#refresh-model').addEventListener('click', () => { void refreshDevice(); });
 $('#download-model').addEventListener('click', async () => {
@@ -281,8 +303,10 @@ $('#download-model').addEventListener('click', async () => {
   } finally { downloading = false; await refreshDevice(); }
 });
 
+// The example closes on any tap outside it, so it never stays over the sliders.
+window.addEventListener('click', event => { if (!event.target.closest?.('#peek')) $('#peek').open = false; });
 for (const name of ['online', 'offline']) window.addEventListener(name, () => {
-  if (name === 'offline' && activeRequest) resetBrief('Connection changed. Get a new brief using your on-device model.');
+  if (name === 'offline' && activeRequest) resetBrief('Connection changed. Try again with your on-device model.');
   renderNetwork(); void refreshDevice();
 });
 window.addEventListener('focus', () => {
@@ -301,5 +325,5 @@ $('#note').value = state.checkIn.note;
 $('#storage-notice').textContent = state.notice;
 $('#storage-notice').hidden = !state.notice;
 renderLogs(); renderPrivacy(); updateCheckIn(); renderNetwork();
-if (state.logs.length && !recentWorkouts(state.logs).length) resetBrief('No workouts in the last 7 days. Add a recent workout, or get a brief based on today’s check-in.');
+if (state.logs.length && !recentWorkouts(state.logs).length) resetBrief('No workouts in the last 7 days. Add a recent workout, or get a pick based on today’s check-in.');
 void refreshDevice();

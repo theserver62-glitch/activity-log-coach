@@ -37,8 +37,17 @@ async function mark(caption = '', fields = {}) {
 async function holdScene(start, minimumSeconds) {
   await pause(Math.max(0, (minimumSeconds - (seconds() - start)) * 1000));
 }
+// The app has two views and folded panels; reach a control the way a person would.
 async function show(page, selector) {
-  await page.locator(selector).evaluate(node => node.scrollIntoView({ block: 'center', behavior: 'instant' }));
+  const target = page.locator(selector);
+  if (await target.evaluate(node => !!node.closest('#check-in')) && await page.locator('#edit-checkin').isVisible()) {
+    await page.getByRole('button', { name: 'Edit check-in' }).click();
+    await pause(800);
+  }
+  for (const panel of ['#ai-settings', '#note-details']) {
+    if (await target.evaluate((node, id) => !!node.closest(id), panel)) await page.locator(`${panel} > summary`).evaluate(summary => { if (!summary.parentElement.open) summary.click(); });
+  }
+  await target.evaluate(node => node.scrollIntoView({ block: 'center', behavior: 'instant' }));
   await pause(700);
 }
 async function status(page, expected, timeout = 30000) {
@@ -46,7 +55,12 @@ async function status(page, expected, timeout = 30000) {
     expected, { timeout });
 }
 async function generate(page, source) {
-  await page.getByRole('button', { name: "Get today's brief" }).click();
+  await page.locator('#ai-settings').evaluate(details => { details.open = false; });
+  if (await page.locator('#edit-checkin').isVisible()) {
+    await page.getByRole('button', { name: 'Edit check-in' }).click();
+    await pause(800);
+  }
+  await page.getByRole('button', { name: "Show today's workout" }).click();
   // Do not match a previous result. Wait for this submit to finish, then inspect
   // the real source and any error. No requests or model replies are mocked.
   await page.waitForFunction(() => !document.querySelector('#get-brief').disabled, null, { timeout: 60000 });
@@ -89,10 +103,12 @@ try {
   }
   await page.locator('#sample-bar').waitFor({ state: 'visible' });
   await page.waitForFunction(() => document.querySelectorAll('#workout-list .workout-item').length === 3);
-  if (await page.locator('#config-notice').isVisible()) {
+  if (await page.locator('#config-notice').evaluate(node => !node.hidden)) {
     throw new Error('Cloud fallback is not configured. Set Firebase/App Check values and restart Vite before recording.');
   }
+  await page.locator('#ai-settings').evaluate(details => { details.open = true; });
   await page.locator('#allow-cloud').uncheck();
+  await page.locator('#ai-settings').evaluate(details => { details.open = false; });
   const opening = seconds();
   await mark("Activity Log Coach turns your recent workouts and today's check-in into a plan.");
   await holdScene(opening, 9);

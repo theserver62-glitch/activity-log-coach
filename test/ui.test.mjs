@@ -159,10 +159,11 @@ test('brief shows three labeled rows, source, recorder timing text and start chi
 });
 
 test('recorder names remain available and mobile document order places the brief after submit', () => {
-  assert.match(html, /id="get-brief"[^>]*><span>Get today's brief<\/span>/);
+  assert.match(html, /id="get-brief"[^>]*><span>Show today's workout<\/span>/);
   assert.match(html, /id="download-model"[^>]*>Download on-device model<\/button>/);
   assert.match(html, /aria-label="Allow cloud when on-device AI is unavailable"/);
   assert.match(html, /<span>Cloud fallback<\/span>/);
   assert.match(html, /Not medical advice\./);
-  assert.match(html, /id="get-brief"[\s\S]*?<\/form>\s*<\/section>\s*<div class="result-column">\s*<section class="brief-section"/);
+  // Only the short check-in summary may sit between the submit button and the brief.
+  assert.match(html, /id="get-brief"[\s\S]*?<\/form>\s*<\/section>\s*<section class="checkin-summary"[\s\S]*?<\/section>\s*<div class="result-column">\s*<section class="brief-section"/);
 });
